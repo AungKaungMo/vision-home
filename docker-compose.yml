@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: vision-home-db
+    environment:
+      POSTGRES_USER: roomapp
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: vision-home
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roomapp -d vision-home"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - vision-home-network
+
+  redis:
+    image: redis:8.6-alpine
+    container_name: vision-home-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - vision-home-network
+
+  api:
+    build:
+      context: .
+      dockerfile: dev.Dockerfile
+      args:
+        APP_NAME: api
+    container_name: vision-home-api
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: "postgresql://roomapp:localdev@postgres:5432/vision-home?schema=public"
+      REDIS_URL: "redis://redis:6379"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/api/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vision-home-network
+
+  web:
+    build:
+      context: .
+      dockerfile: dev.Dockerfile
+      args:
+        APP_NAME: web
+    container_name: vision-home-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/web/node_modules
+      - /app/apps/web/.next
+    depends_on:
+      - api
+    networks:
+      - vision-home-network
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  vision-home-network:
+    driver: bridge

@@ -1,0 +1,50 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VisionHome API",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "prisma generate && tsup src/server.ts --format esm --clean",
+    "check-types": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "db:deploy": "prisma migrate deploy",
+    "db:format": "prisma format",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "db:validate": "prisma validate",
+    "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
+    "lint": "eslint . --max-warnings 0",
+    "start": "node dist/server.js",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.23.1",
+    "eslint": "^9.39.1",
+    "nodemon": "^3.1.14",
+    "prisma": "^7.9.1",
+    "tsc-alias": "^1.8.16",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@clerk/express": "^2.1.61",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "@repo/schemas": "workspace:*",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "zod": "^4.4.3"
+  }
+}

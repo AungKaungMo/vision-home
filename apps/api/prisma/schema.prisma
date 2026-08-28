@@ -1,0 +1,221 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProjectStatus {
+  draft
+  active
+  archived
+
+  @@map("project_status")
+}
+
+enum ProjectVisibility {
+  private
+  unlisted
+  public
+
+  @@map("project_visibility")
+}
+
+enum AssetType {
+  source
+  generated
+
+  @@map("asset_type")
+}
+
+enum GenerationStatus {
+  pending
+  queued
+  processing
+  completed
+  failed
+  cancelled
+
+  @@map("generation_status")
+}
+
+model User {
+  id        String  @id @default(uuid()) @db.Uuid
+  clerkId   String  @unique(map: "users_clerk_id_key") @map("clerk_id") @db.VarChar(255)
+  email     String  @db.VarChar(320)
+  username  String  @db.VarChar(30)
+  fullName  String? @map("full_name") @db.VarChar(120)
+  avatarUrl String? @map("avatar_url") @db.Text
+  bio       String? @db.VarChar(300)
+
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  projects Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id      String @id @default(uuid()) @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+
+  title       String  @db.VarChar(120)
+  description String? @db.VarChar(500)
+
+  status     ProjectStatus     @default(draft)
+  visibility ProjectVisibility @default(private)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rooms Room[]
+
+  @@index([ownerId, updatedAt], map: "projects_owner_updated_idx")
+  @@index([visibility, createdAt], map: "projects_visibility_created_idx")
+  @@map("projects")
+}
+
+model RoomType {
+  id String @id @default(uuid()) @db.Uuid
+
+  code        String  @unique(map: "room_types_code_key") @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+
+  defaultImageKey String? @map("default_image_key") @db.VarChar(500)
+  promptHint      String? @map("prompt_hint") @db.Text
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  rooms Room[]
+
+  @@index([isActive, sortOrder], map: "room_types_active_sort_idx")
+  @@map("room_types")
+}
+
+model DesignStyle {
+  id String @id @default(uuid()) @db.Uuid
+
+  code String @unique(map: "design_styles_code_key") @db.VarChar(50)
+  name String @db.VarChar(100)
+
+  promptHint String? @map("prompt_hint") @db.Text
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  rooms RoomDesignStyle[]
+
+  @@index([isActive], map: "design_styles_active_idx")
+  @@map("design_styles")
+}
+
+model Room {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId  String @map("project_id") @db.Uuid
+  roomTypeId String @map("room_type_id") @db.Uuid
+
+  name        String? @db.VarChar(120)
+  description String? @db.VarChar(500)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomType     RoomType          @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  designStyles RoomDesignStyle[]
+  assets       Asset[]
+  generations  Generation[]
+
+  @@index([projectId, createdAt], map: "rooms_project_created_idx")
+  @@index([roomTypeId], map: "rooms_room_type_idx")
+  @@map("rooms")
+}
+
+model RoomDesignStyle {
+  roomId        String @map("room_id") @db.Uuid
+  designStyleId String @map("design_style_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  designStyle DesignStyle @relation(fields: [designStyleId], references: [id], onDelete: Restrict)
+
+  @@id([roomId, designStyleId])
+  @@index([designStyleId], map: "room_design_styles_style_idx")
+  @@map("room_design_styles")
+}
+
+model Asset {
+  id String @id @default(uuid()) @db.Uuid
+
+  roomId       String  @map("room_id") @db.Uuid
+  generationId String? @map("generation_id") @db.Uuid
+
+  type AssetType
+
+  storageKey String @unique(map: "assets_storage_key_key") @map("storage_key") @db.VarChar(500)
+  mimeType   String @map("mime_type") @db.VarChar(100)
+  sizeBytes  BigInt @map("size_bytes")
+  width      Int
+  height     Int
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  room                 Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  generation           Generation?  @relation("GenerationOutputs", fields: [generationId], references: [id], onDelete: SetNull)
+  sourceForGenerations Generation[] @relation("GenerationSourceAsset")
+
+  @@index([roomId, createdAt], map: "assets_room_created_idx")
+  @@index([generationId], map: "assets_generation_idx")
+  @@map("assets")
+}
+
+model Generation {
+  id String @id @default(uuid()) @db.Uuid
+
+  roomId        String @map("room_id") @db.Uuid
+  sourceAssetId String @map("source_asset_id") @db.Uuid
+
+  provider          String  @default("fal") @db.VarChar(50)
+  providerRequestId String? @map("provider_request_id") @db.VarChar(255)
+  modelId           String  @map("model_id") @db.VarChar(255)
+
+  status     GenerationStatus @default(pending)
+  parameters Json             @db.JsonB
+
+  errorCode    String? @map("error_code") @db.VarChar(100)
+  errorMessage String? @map("error_message") @db.Text
+
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  room        Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sourceAsset Asset   @relation("GenerationSourceAsset", fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  assets      Asset[] @relation("GenerationOutputs")
+
+  @@unique([provider, providerRequestId], map: "generations_provider_request_unique")
+  @@index([roomId, createdAt], map: "generations_room_created_idx")
+  @@index([status, createdAt], map: "generations_status_created_idx")
+  @@map("generations")
+}
