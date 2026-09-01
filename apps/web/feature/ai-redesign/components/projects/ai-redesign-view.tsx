@@ -1,7 +1,7 @@
 import { Plus, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { CreateProjectDialog } from "@/feature/ai-redesign/components/create-project-dialog";
+import { CreateProjectDialog } from "@/feature/ai-redesign/components/projects/create-project-dialog";
 import { ProjectGrid } from "@/feature/ai-redesign/components/projects/project-grid";
 
 export function AiRedesignView() {

@@ -6,7 +6,6 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// --- Auth ---------------------------------------------------------------
 // The Clerk token getter lives in React context, so it's registered once
 // from <Providers>. The interceptor then attaches it to every request.
 let getAuthToken: () => Promise<string | null> = async () => null;
@@ -21,8 +20,6 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// --- Errors -------------------------------------------------------------
-// Surface the API's `{ status: "error", message }` body as a typed error.
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -44,7 +41,4 @@ api.interceptors.response.use(
     ),
 );
 
-// --- Envelope -----------------------------------------------------------
-// Every /api/v1 endpoint responds with `{ status, message, data }`.
-// Strip it in a query fn:  api.get<ApiEnvelope<T>>("/x").then((res) => res.data.data)
 export type ApiEnvelope<T> = { status: "success"; message: string; data: T };

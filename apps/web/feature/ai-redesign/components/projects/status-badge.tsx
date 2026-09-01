@@ -1,19 +1,24 @@
 import { cn } from "@/lib/utils";
-import type { ProjectStatus } from "@/feature/ai-redesign/constants";
+import type { ProjectStatus } from "@repo/schemas/projects";
 
 const STATUS_META: Record<
   ProjectStatus,
   { label: string; dot: string; text: string }
 > = {
-  completed: {
-    label: "Completed",
+  active: {
+    label: "Active",
     dot: "bg-success",
     text: "text-success",
   },
-  "in-progress": {
-    label: "In progress",
+  draft: {
+    label: "Draft",
     dot: "bg-warning",
     text: "text-warning",
+  },
+  archived: {
+    label: "Archived",
+    dot: "bg-fg-3",
+    text: "text-fg-3",
   },
 };
 

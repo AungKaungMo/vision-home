@@ -1,5 +1,24 @@
 # VisionHome API
 
+## Generation worker
+
+Image generation jobs use BullMQ with Redis. Local development expects Redis at
+`redis://localhost:6379`, matching `docker-compose.yml` and `.env.example`.
+
+Running `pnpm dev` from the repository root starts the API and generation worker
+as separate Turbo tasks. To run them individually:
+
+```bash
+pnpm --filter api dev
+pnpm --filter api dev:worker
+```
+
+Production builds include both entry points. Run the worker with:
+
+```bash
+pnpm --filter api start:worker
+```
+
 ## Clerk webhook sync
 
 The public Clerk webhook endpoint is:

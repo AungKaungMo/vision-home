@@ -24,6 +24,21 @@ enum ProjectVisibility {
   @@map("project_visibility")
 }
 
+enum ProjectType {
+  single_room
+  whole_house
+  place_it_yourself
+
+  @@map("project_type")
+}
+
+enum RoomTypeSource {
+  user
+  detected
+
+  @@map("room_type_source")
+}
+
 enum AssetType {
   source
   generated
@@ -65,6 +80,8 @@ model Project {
   id      String @id @default(uuid()) @db.Uuid
   ownerId String @map("owner_id") @db.Uuid
 
+  type ProjectType
+
   title       String  @db.VarChar(120)
   description String? @db.VarChar(500)
 
@@ -79,6 +96,7 @@ model Project {
   rooms Room[]
 
   @@index([ownerId, updatedAt], map: "projects_owner_updated_idx")
+  @@index([ownerId, type], map: "projects_owner_type_idx")
   @@index([visibility, createdAt], map: "projects_visibility_created_idx")
   @@map("projects")
 }
@@ -90,8 +108,8 @@ model RoomType {
   name        String  @db.VarChar(100)
   description String? @db.VarChar(500)
 
-  defaultImageKey String? @map("default_image_key") @db.VarChar(500)
-  promptHint      String? @map("prompt_hint") @db.Text
+  sampleImageKeys String[] @default([]) @map("sample_image_keys")
+  promptHint      String?  @map("prompt_hint") @db.Text
 
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
@@ -118,7 +136,7 @@ model DesignStyle {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  rooms RoomDesignStyle[]
+  generations GenerationDesignStyle[]
 
   @@index([isActive], map: "design_styles_active_idx")
   @@map("design_styles")
@@ -127,8 +145,11 @@ model DesignStyle {
 model Room {
   id String @id @default(uuid()) @db.Uuid
 
-  projectId  String @map("project_id") @db.Uuid
-  roomTypeId String @map("room_type_id") @db.Uuid
+  projectId  String  @map("project_id") @db.Uuid
+  roomTypeId String? @map("room_type_id") @db.Uuid
+
+  roomTypeSource RoomTypeSource? @map("room_type_source")
+  roomTypeLabel  String?         @map("room_type_label") @db.VarChar(100)
 
   name        String? @db.VarChar(120)
   description String? @db.VarChar(500)
@@ -137,29 +158,28 @@ model Room {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  roomType     RoomType          @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
-  designStyles RoomDesignStyle[]
-  assets       Asset[]
-  generations  Generation[]
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roomType    RoomType?    @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
+  assets      Asset[]
+  generations Generation[]
 
   @@index([projectId, createdAt], map: "rooms_project_created_idx")
   @@index([roomTypeId], map: "rooms_room_type_idx")
   @@map("rooms")
 }
 
-model RoomDesignStyle {
-  roomId        String @map("room_id") @db.Uuid
+model GenerationDesignStyle {
+  generationId  String @map("generation_id") @db.Uuid
   designStyleId String @map("design_style_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  generation  Generation  @relation(fields: [generationId], references: [id], onDelete: Cascade)
   designStyle DesignStyle @relation(fields: [designStyleId], references: [id], onDelete: Restrict)
 
-  @@id([roomId, designStyleId])
-  @@index([designStyleId], map: "room_design_styles_style_idx")
-  @@map("room_design_styles")
+  @@id([generationId, designStyleId])
+  @@index([designStyleId], map: "generation_design_styles_style_idx")
+  @@map("generation_design_styles")
 }
 
 model Asset {
@@ -169,6 +189,9 @@ model Asset {
   generationId String? @map("generation_id") @db.Uuid
 
   type AssetType
+
+  // The design style a `generated` output renders; null for `source` assets.
+  styleCode String? @map("style_code") @db.VarChar(50)
 
   storageKey String @unique(map: "assets_storage_key_key") @map("storage_key") @db.VarChar(500)
   mimeType   String @map("mime_type") @db.VarChar(100)
@@ -201,6 +224,8 @@ model Generation {
   status     GenerationStatus @default(pending)
   parameters Json             @db.JsonB
 
+  additionalDetails String? @map("additional_details") @db.Text
+
   errorCode    String? @map("error_code") @db.VarChar(100)
   errorMessage String? @map("error_message") @db.Text
 
@@ -210,9 +235,10 @@ model Generation {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  room        Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sourceAsset Asset   @relation("GenerationSourceAsset", fields: [sourceAssetId], references: [id], onDelete: Restrict)
-  assets      Asset[] @relation("GenerationOutputs")
+  room         Room                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sourceAsset  Asset                   @relation("GenerationSourceAsset", fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  assets       Asset[]                 @relation("GenerationOutputs")
+  designStyles GenerationDesignStyle[]
 
   @@unique([provider, providerRequestId], map: "generations_provider_request_unique")
   @@index([roomId, createdAt], map: "generations_room_created_idx")

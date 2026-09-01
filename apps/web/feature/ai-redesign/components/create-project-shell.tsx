@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -6,23 +8,33 @@ import { cn } from "@/lib/utils";
 import {
   PROJECT_TYPE_META,
   WORKFLOW_OPTIONS,
-  type ProjectType,
 } from "@/feature/ai-redesign/constants";
+import type { ProjectType } from "@repo/schemas/projects";
+
+import { useProject } from "@/feature/ai-redesign/hooks/queries/use-project";
 
 export function CreateProjectShell({
   type,
   children,
-  /** Widen the container for form-heavy flows (e.g. single-room's 2-col grid). */
   wide = false,
+  projectId,
 }: {
   type: ProjectType;
   children?: React.ReactNode;
   wide?: boolean;
+  projectId?: string;
 }) {
   const meta = PROJECT_TYPE_META[type];
   const option = WORKFLOW_OPTIONS.find((item) => item.type === type);
   if (!meta || !option) notFound();
   const Icon = meta.icon;
+
+  const { data: project, isLoading } = useProject(projectId);
+
+  const loading = Boolean(projectId) && isLoading;
+  const heading = project?.title || option.title;
+  const blurb = project?.description || "";
+  const eyebrow = project ? option.title : "New project";
 
   return (
     <div
@@ -44,17 +56,23 @@ export function CreateProjectShell({
           <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-terracotta-muted text-terracotta">
             <Icon aria-hidden className="size-5" strokeWidth={2} />
           </span>
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span className="text-xs font-semibold tracking-wider text-fg-3 uppercase">
-              New project
+              {eyebrow}
             </span>
-            <h1 className="font-display text-2xl text-fg-1">{option.title}</h1>
+            {loading ? (
+              <div className="h-7 w-56 animate-pulse rounded bg-muted" />
+            ) : (
+              <h1 className="font-display text-2xl text-fg-1">{heading}</h1>
+            )}
           </div>
         </div>
 
-        <p className="max-w-2xl text-md leading-relaxed text-fg-2">
-          {option.description}
-        </p>
+        {loading ? (
+          <div className="h-5 w-full max-w-2xl animate-pulse rounded bg-muted" />
+        ) : (
+          <p className="max-w-2xl text-md leading-relaxed text-fg-2">{blurb}</p>
+        )}
       </div>
 
       {children ?? (

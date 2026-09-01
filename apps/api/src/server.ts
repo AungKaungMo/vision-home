@@ -2,6 +2,7 @@ import { app } from "@/app";
 import { CONFIG } from "@/core/config";
 import { logger } from "@/core/logger";
 import { prisma } from "@/database/prisma";
+import { closeGenerationQueue } from "@/queues/generation.queue";
 
 const server = app.listen(CONFIG.PORT, () => {
   logger.info("VisionHome API listening", {
@@ -20,8 +21,13 @@ async function shutdown(signal: string) {
 
   server.close(async () => {
     try {
-      await prisma.$disconnect();
+      await closeGenerationQueue();
+    } catch (error) {
+      logger.error("Failed to close generation queue", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
+      await prisma.$disconnect();
       process.exit(0);
     }
   });

@@ -28,6 +28,7 @@ out/
 build
 dist
 apps/api/src/generated/prisma
+apps/api/asset/storage/
 
 
 # Debug

@@ -21,10 +21,11 @@ import {
 } from "@/feature/ai-redesign/constants";
 import { ProjectCard } from "@/feature/ai-redesign/components/projects/project-card";
 import { ProjectCardSkeleton } from "@/feature/ai-redesign/components/projects/project-card-skeleton";
-import { useProjects } from "@/feature/ai-redesign/hooks/use-projects";
+import { useProjects } from "@/feature/ai-redesign/hooks/queries/use-projects";
 
 export function ProjectGrid() {
-  const { projects, isLoading } = useProjects();
+  const { data, isLoading, isError, refetch } = useProjects();
+  const projects = data?.items;
   const [filter, setFilter] = useState<ProjectFilter>("all");
   const [sort, setSort] = useState<ProjectSort>("recent");
   const [query, setQuery] = useState("");
@@ -32,7 +33,7 @@ export function ProjectGrid() {
   const visibleProjects = useMemo(() => {
     const search = query.trim().toLowerCase();
 
-    return projects
+    return (projects ?? [])
       .filter((project) => filter === "all" || project.type === filter)
       .filter(
         (project) =>
@@ -41,7 +42,7 @@ export function ProjectGrid() {
       .sort((a, b) =>
         sort === "name"
           ? a.title.localeCompare(b.title)
-          : a.updatedRank - b.updatedRank,
+          : Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
       );
   }, [projects, filter, sort, query]);
 
@@ -52,9 +53,7 @@ export function ProjectGrid() {
     <section className="flex flex-col gap-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h2 className="font-display text-xl text-fg-1">
-            All projects
-          </h2>
+          <h2 className="font-display text-xl text-fg-1">All projects</h2>
           <p className="max-w-xl text-sm leading-snug text-fg-2">
             Every redesign in one place. Search, filter, and sort to find the
             project you need.
@@ -93,7 +92,10 @@ export function ProjectGrid() {
                 onValueChange={(value) => setSort(value as ProjectSort)}
               >
                 {SORT_OPTIONS.map((option) => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
                     {option.label}
                   </DropdownMenuRadioItem>
                 ))}
@@ -134,6 +136,20 @@ export function ProjectGrid() {
           {Array.from({ length: 6 }).map((_, index) => (
             <ProjectCardSkeleton key={index} />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="grid place-items-center gap-3 rounded-2xl border border-dashed border-border-strong bg-surface-warm px-6 py-16 text-center">
+          <div>
+            <p className="text-sm font-medium text-fg-2">
+              Couldn&apos;t load your projects.
+            </p>
+            <p className="mt-1 text-sm text-fg-3">
+              Check your connection and try again.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </div>
       ) : visibleProjects.length > 0 ? (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">

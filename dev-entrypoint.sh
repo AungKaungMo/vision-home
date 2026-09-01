@@ -13,7 +13,8 @@ echo "==> Building workspace libraries..."
 pnpm turbo build --filter=@repo/schemas
 
 # API-only: make sure the Prisma client exists and the DB schema is up to date
-# before the server boots.
+# before the server boots. The worker waits for the API healthcheck, so it can
+# use the generated client from the shared source mount.
 if [ "$TARGET_APP" = "api" ]; then
   echo "==> Generating Prisma client..."
   pnpm --filter api run db:generate
@@ -23,4 +24,8 @@ if [ "$TARGET_APP" = "api" ]; then
 fi
 
 echo "==> Starting '$TARGET_APP' dev server..."
+if [ "$TARGET_APP" = "worker" ]; then
+  exec pnpm --filter api dev:worker
+fi
+
 exec pnpm turbo dev --filter="$TARGET_APP"

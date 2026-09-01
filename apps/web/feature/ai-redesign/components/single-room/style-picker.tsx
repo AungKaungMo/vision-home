@@ -1,10 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useDesignStyles } from "@/feature/ai-redesign/hooks/use-design-styles";
+import { useDesignStyles } from "@/feature/ai-redesign/hooks/queries/use-design-styles";
 
-/** How many styles can be blended into a single redesign. */
-export const MAX_STYLES = 5;
+export const MAX_STYLES = 3;
 
 export function StylePicker({
   value,
@@ -80,7 +79,8 @@ export function StylePicker({
                   active
                     ? "border-terracotta bg-terracotta-muted text-fg-1"
                     : "border-border bg-surface text-fg-2 hover:border-terracotta-light hover:text-fg-1",
-                  disabled && "cursor-not-allowed opacity-40 hover:border-border hover:text-fg-2",
+                  disabled &&
+                    "cursor-not-allowed opacity-40 hover:border-border hover:text-fg-2",
                 )}
               >
                 <span
