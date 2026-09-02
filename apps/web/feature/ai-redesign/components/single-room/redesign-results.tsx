@@ -9,16 +9,18 @@ import { GenerationLoadingOverlay } from "@/feature/ai-redesign/components/singl
 import { ResultActions } from "@/feature/ai-redesign/components/single-room/result-actions";
 import { ShopThisLook } from "@/feature/ai-redesign/components/single-room/shop-this-look";
 import { useGeneration } from "@/feature/ai-redesign/hooks/queries/use-generation";
+import { useRegenerateGeneration } from "@/feature/ai-redesign/hooks/single-room/use-regenerate-generation";
 
 export function RedesignResults({
   generationId,
-  onStartOver,
+  onGenerationChange,
 }: {
   generationId: string;
-  onStartOver: () => void;
+  onGenerationChange: (generationId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch } = useGeneration(generationId);
+  const regeneration = useRegenerateGeneration(onGenerationChange);
 
   const status = data?.status;
   const isRunning =
@@ -33,7 +35,9 @@ export function RedesignResults({
 
   return (
     <>
-      <GenerationLoadingOverlay open={isLoading || isRunning} />
+      <GenerationLoadingOverlay
+        open={isLoading || isRunning || regeneration.isPending}
+      />
 
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -53,7 +57,10 @@ export function RedesignResults({
               />
             )}
           </div>
-          <ResultActions onRegenerate={onStartOver} />
+          <ResultActions
+            onRegenerate={() => regeneration.mutate(generationId)}
+            isRegenerating={regeneration.isPending || isRunning}
+          />
         </div>
 
         {isLoading || isRunning ? null : isError || !data ? (
@@ -73,9 +80,7 @@ export function RedesignResults({
               aria-hidden
               className="mt-0.5 size-4 shrink-0 text-terracotta"
             />
-            <p className="leading-snug">
-              {data.errorMessage ?? "This redesign failed. Please try again."}
-            </p>
+            <p className="leading-snug">Something went wrong.</p>
           </div>
         ) : status === "cancelled" ? (
           <p className="text-sm text-fg-3">This redesign was cancelled.</p>

@@ -44,8 +44,8 @@ export type UseSingleRoomForm = {
   isGenerating: boolean;
   generate: () => void;
   generationId: string | null;
+  selectGeneration: (generationId: string) => void;
   isProjectLoading: boolean;
-  resetGeneration: () => void;
 };
 
 export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
@@ -141,8 +141,8 @@ export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
     isGenerating: mutation.isPending,
     generate,
     generationId,
+    selectGeneration: (nextGenerationId) =>
+      setGenerationSelection({ projectId, generationId: nextGenerationId }),
     isProjectLoading: Boolean(projectId) && isProjectLoading,
-    resetGeneration: () =>
-      setGenerationSelection({ projectId, generationId: null }),
   };
 }

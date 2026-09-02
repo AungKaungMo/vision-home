@@ -27,8 +27,8 @@ export function SingleRoomForm({
     isGenerating,
     generate,
     generationId,
+    selectGeneration,
     isProjectLoading,
-    resetGeneration,
   } = useSingleRoomForm(projectId);
 
   if (isProjectLoading) {
@@ -43,7 +43,7 @@ export function SingleRoomForm({
     return (
       <RedesignResults
         generationId={generationId}
-        onStartOver={resetGeneration}
+        onGenerationChange={selectGeneration}
       />
     );
   }
