@@ -41,10 +41,10 @@ const configSchema = z.object({
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
   FAL_KEY: optionalString,
-  // SerpAPI (Google Shopping engine) — resolves detected furniture to real
+  // Serper.dev (Google Shopping) — resolves detected furniture to real
   // purchasable products for "shop this look". Optional; without it the real
   // product-search adapter yields no matches.
-  SERPAPI_KEY: optionalString,
+  SERPER_API_KEY: optionalString,
   R2_ACCOUNT_ID: optionalString,
   R2_ACCESS_KEY_ID: optionalString,
   R2_SECRET_ACCESS_KEY: optionalString,
