@@ -89,7 +89,7 @@ export function RedesignResults({
                     afterUrl={output.imageUrl}
                   />
                 </div>
-                <ShopThisLook />
+                <ShopThisLook generationId={data.id} />
               </>
             )}
           </div>

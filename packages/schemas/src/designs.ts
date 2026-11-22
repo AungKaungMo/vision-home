@@ -190,6 +190,27 @@ export const generationDetailSchema = z.object({
 
 export type GenerationDetail = z.infer<typeof generationDetailSchema>;
 
+/**
+ * A furniture/decor item a vision pass spotted in a completed render. No real
+ * inventory — `name` + `category` are what the web turns into a shop search
+ * link. Returned by GET /api/v1/generations/:id/products.
+ */
+export const detectedProductSchema = z.object({
+  name: z.string().min(1),
+  category: z.string().min(1),
+});
+
+export type DetectedProduct = z.infer<typeof detectedProductSchema>;
+
+/** At most this many products are surfaced under a render. */
+export const MAX_DETECTED_PRODUCTS = 8;
+
+export const generationProductsSchema = z.object({
+  products: z.array(detectedProductSchema),
+});
+
+export type GenerationProducts = z.infer<typeof generationProductsSchema>;
+
 /** Most element-edit regions accepted in a single apply. */
 export const MAX_ELEMENT_EDITS = 10;
 

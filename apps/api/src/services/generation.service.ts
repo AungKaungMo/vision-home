@@ -1,13 +1,19 @@
-import type {
-  GenerateDesignResult,
-  GenerationDetail,
+import {
+  detectedProductSchema,
+  type GenerateDesignResult,
+  type GenerationDetail,
+  type GenerationProducts,
 } from "@repo/schemas/designs";
+import { z } from "zod";
 
 import { imageGeneration } from "@/adapters/image-generation";
+import { imageUnderstanding } from "@/adapters/image-understanding";
 import { BadRequestError, ConflictError, NotFoundError } from "@/core/errors";
 import { headObject, storagePublicUrl } from "@/core/storage";
 import { prisma } from "@/database/prisma";
 import { queueGeneration } from "@/services/generation-job.service";
+
+const storedProductsSchema = z.array(detectedProductSchema);
 
 const RUNNING_STATUSES = new Set(["pending", "queued", "processing"]);
 
@@ -63,6 +69,58 @@ export async function getGenerationById(
     errorMessage: generation.errorMessage,
     createdAt: generation.createdAt.toISOString(),
   };
+}
+
+/**
+ * "Shop this look" for a completed render, scoped to its owner. The vision pass
+ * is expensive, so the detected products are cached on the generation on first
+ * request and replayed afterwards. A render with no generated output yet (still
+ * running, or failed) simply yields an empty list rather than an error.
+ */
+export async function getGenerationProducts(
+  ownerId: string,
+  generationId: string,
+): Promise<GenerationProducts> {
+  const generation = await prisma.generation.findFirst({
+    where: {
+      id: generationId,
+      room: { design: { ownerId, deletedAt: null } },
+    },
+    select: {
+      products: true,
+      assets: {
+        where: { type: "generated", deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { storageKey: true },
+      },
+    },
+  });
+
+  if (!generation) {
+    throw new NotFoundError("Generation not found");
+  }
+
+  if (generation.products !== null) {
+    // Tolerate a legacy/garbled cache by re-detecting rather than 500ing.
+    const cached = storedProductsSchema.safeParse(generation.products);
+    if (cached.success) {
+      return { products: cached.data };
+    }
+  }
+
+  const renderUrl = storagePublicUrl(generation.assets.at(0)?.storageKey);
+  if (!renderUrl) {
+    return { products: [] };
+  }
+
+  const products = await imageUnderstanding.detectProducts(renderUrl);
+  await prisma.generation.update({
+    where: { id: generationId },
+    data: { products },
+  });
+
+  return { products };
 }
 
 export async function regenerateGeneration(

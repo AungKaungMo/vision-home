@@ -232,6 +232,10 @@ model Generation {
   status     GenerationStatus @default(pending)
   parameters Json             @db.JsonB
 
+  // Furniture/decor the vision pass found in the render, computed lazily on the
+  // first "shop this look" view and cached here. Null = not yet detected.
+  products Json? @db.JsonB
+
   additionalDetails String? @map("additional_details") @db.Text
 
   errorCode    String? @map("error_code") @db.VarChar(100)

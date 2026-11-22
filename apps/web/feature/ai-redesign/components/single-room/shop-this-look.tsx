@@ -1,42 +1,19 @@
+"use client";
+
 import { Sparkles } from "lucide-react";
 
-import {
-  ProductCard,
-  type ShopProduct,
-} from "@/feature/ai-redesign/components/single-room/product-card";
+import { ProductCard } from "@/feature/ai-redesign/components/single-room/product-card";
+import { useGenerationProducts } from "@/feature/ai-redesign/hooks/queries/use-generation-products";
 
-const PRODUCTS: ShopProduct[] = [
-  {
-    category: "Seating",
-    imageUrl:
-      "https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=900&q=85",
-    name: "Linen Lounge Chair",
-    price: "$640",
-  },
-  {
-    category: "Tables",
-    imageUrl:
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=900&q=85",
-    name: "Travertine Coffee Table",
-    price: "$1,140",
-  },
-  {
-    category: "Lighting",
-    imageUrl:
-      "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=900&q=85",
-    name: "Paper Floor Lamp",
-    price: "$280",
-  },
-  {
-    category: "Plants",
-    imageUrl:
-      "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=900&q=85",
-    name: "Monstera, Large",
-    price: "$78",
-  },
-];
+export function ShopThisLook({ generationId }: { generationId: string }) {
+  const { data, isLoading, isError } = useGenerationProducts(generationId);
+  const products = data?.products ?? [];
 
-export function ShopThisLook() {
+  // Secondary feature: if detection fails or finds nothing, stay out of the way.
+  if (isError || (!isLoading && products.length === 0)) {
+    return null;
+  }
+
   return (
     <section aria-labelledby="shop-this-look-heading" className="pt-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -46,9 +23,11 @@ export function ShopThisLook() {
         >
           Shop this look
         </h2>
-        <p className="text-sm text-fg-3">
-          {PRODUCTS.length} products matched from your generated design
-        </p>
+        {!isLoading && (
+          <p className="text-sm text-fg-3">
+            {products.length} products found in your generated design
+          </p>
+        )}
       </div>
 
       <p className="mt-2 flex items-start gap-2 text-sm text-fg-3">
@@ -57,14 +36,25 @@ export function ShopThisLook() {
           className="mt-0.5 size-4 shrink-0 text-terracotta"
           strokeWidth={2}
         />
-        AI identified these real products in your redesign — buy them to bring
-        it to life.
+        {isLoading
+          ? "Scanning your redesign for shoppable pieces…"
+          : "AI spotted these pieces in your redesign — tap to shop similar ones."}
       </p>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {PRODUCTS.map((product) => (
-          <ProductCard key={product.name} product={product} />
-        ))}
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {isLoading
+          ? Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-[76px] animate-pulse rounded-2xl border border-border bg-muted"
+              />
+            ))
+          : products.map((product) => (
+              <ProductCard
+                key={`${product.category}:${product.name}`}
+                product={product}
+              />
+            ))}
       </div>
     </section>
   );

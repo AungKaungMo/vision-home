@@ -1,48 +1,34 @@
-import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import type { DetectedProduct } from "@repo/schemas/designs";
 
-export type ShopProduct = {
-  category: string;
-  imageUrl: string;
-  name: string;
-  price: string;
-};
+/** Link out to a shopping search — we surface what's in the render, not inventory. */
+function searchUrl(product: DetectedProduct) {
+  const query = `${product.name} ${product.category}`;
+  return `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
+}
 
-export function ProductCard({ product }: { product: ShopProduct }) {
+export function ProductCard({ product }: { product: DetectedProduct }) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
-      <div className="relative aspect-square overflow-hidden bg-muted">
-        <Image
-          src={product.imageUrl}
-          alt={product.name}
-          fill
-          sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw"
-          className="object-cover transition-transform duration-base hover:scale-[1.02]"
-          unoptimized
-        />
-        <span className="absolute top-3 left-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold tracking-wide text-fg-2 uppercase shadow-sm backdrop-blur-sm">
+    <a
+      href={searchUrl(product)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm transition-colors hover:border-terracotta"
+    >
+      <div className="min-w-0">
+        <span className="text-xs font-semibold tracking-wide text-fg-3 uppercase">
           {product.category}
         </span>
+        <h3 className="mt-1 truncate font-body text-base font-semibold text-fg-1">
+          {product.name}
+        </h3>
       </div>
 
-      <div className="flex items-end justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <h3 className="truncate font-body text-base font-semibold text-fg-1">
-            {product.name}
-          </h3>
-          <p className="mt-2 text-md font-semibold text-terracotta">
-            {product.price}
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          className="h-9 shrink-0 rounded-full bg-fg-1 px-4 text-sm font-semibold text-fg-inverse hover:bg-fg-2"
-        >
-          Buy
-        </Button>
-      </div>
-    </article>
+      <span className="flex shrink-0 items-center gap-1 rounded-full bg-fg-1 px-3 py-1.5 text-sm font-semibold text-fg-inverse transition-colors group-hover:bg-fg-2">
+        Shop
+        <ArrowUpRight aria-hidden className="size-4" strokeWidth={2} />
+      </span>
+    </a>
   );
 }
