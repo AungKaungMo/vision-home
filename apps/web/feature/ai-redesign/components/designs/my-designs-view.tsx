@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpDown, Move, Plus, Search, Sparkles, Wand2 } from "lucide-react";
+import { ArrowUpDown, Plus, Search, Sparkles } from "lucide-react";
 import type { DesignListItem } from "@repo/schemas/designs";
 
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -90,26 +89,14 @@ export function MyDesignsView() {
           </p>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button size="lg" className="shrink-0 shadow-primary" />}
-          >
-            <Plus aria-hidden strokeWidth={2.5} />
-            Create New Design
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem render={<Link href={newDesignHref("single_room")} />}>
-              <Wand2 aria-hidden />
-              Single room redesign
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              render={<Link href="/ai-studio/new/place-it-yourself" />}
-            >
-              <Move aria-hidden />
-              Place it yourself
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          size="lg"
+          className="shrink-0 shadow-primary"
+          render={<Link href={newDesignHref("single_room")} />}
+        >
+          <Plus aria-hidden strokeWidth={2.5} />
+          Create New Design
+        </Button>
       </header>
 
       <div className="flex flex-col gap-4 border-b border-divider pb-4 sm:flex-row sm:items-center sm:justify-between">

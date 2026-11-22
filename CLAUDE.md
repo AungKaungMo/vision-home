@@ -88,7 +88,7 @@ Async redesign jobs use the `Generation` lifecycle (`GenerationStatus`: pending�
 
 ## Product scope (portfolio)
 
-Deliberately scoped small. **In:** single-room redesign, place-it-yourself, shop-these-products, plus Home and Profile. **Out (do not build / already cut):** sharing/publish, billing/subscription, whole-house, Explore, For You, Saved. The core domain entity is **`Design`** (formerly `Project` — fully renamed across schema, services, routes, and web).
+Deliberately scoped small. **In:** single-room redesign, shop-these-products, plus Home and Profile. **Out (do not build / already cut):** place-it-yourself, sharing/publish, billing/subscription, whole-house, Explore, For You, Saved. The core domain entity is **`Design`** (formerly `Project` — fully renamed across schema, services, routes, and web).
 
 ## Redesign pipeline — build status
 
@@ -106,8 +106,8 @@ The single-room redesign flow is the primary vertical slice. Status (`[x]` done,
 - [x] View result + before/after slider — web `redesign-results.tsx`, `before-after-comparison.tsx`
 - [x] Regenerate — API `POST /generations/:id/regenerate`; web `use-regenerate-generation.ts`
 - [x] Element editing — full UI (draw/move/resize regions + per-edit instructions) **and** backend: API `POST /assets/:id/edits` → `element-edit.service.ts` (produces a new generation); web `element-editor.tsx` → `onApplied` swaps the results view to the edited generation.
-- [~] Shop these products — UI renders hardcoded mock products (`shop-this-look.tsx`), Buy is a no-op (`product-card.tsx`). **To build:** a vision pass detects furniture in the render → product name/category, each linking out to a search. No real inventory/prices.
-- [ ] Place-it-yourself flow — not built (route + components were removed). **To build:** upload room → pick catalog item → position → AI composites it in. Needs a `place_it_yourself` `DesignType` + Prisma enum value.
+- [x] Shop these products — lazy, cached per generation. `image-understanding.detectProducts` runs **florence-2 object-detection** (grounded, so it won't invent furniture for an empty room) → `{name, category}`; each is resolved to a real listing via the `product-search` port (**Serper.dev** Google Shopping, needs `SERPER_API_KEY`). API `GET /generations/:id/products` → `generation.service.getGenerationProducts` caches to `Generation.products`. Web `shop-this-look.tsx` + `use-generation-products.ts` + `product-card.tsx` (photo/price/retailer/buy link). Panel hides when nothing shoppable is found.
+- Place-it-yourself flow — **cut** (removed from web; `place_it_yourself` `DesignType`/enum value already dropped in migration `20261114000000`).
 
 **Infrastructure & cross-cutting**
 
