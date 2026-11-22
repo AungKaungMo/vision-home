@@ -5,38 +5,42 @@ import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { PhotoSource } from "@/feature/ai-redesign/constants";
-import { useRoomType } from "@/feature/ai-redesign/hooks/queries/use-room-type";
+import { useRoomTypes } from "@/feature/ai-redesign/hooks/queries/use-room-type";
+
+type SampleTile = {
+  id: string;
+  roomTypeId: string;
+  roomTypeName: string;
+  imageUrl: string;
+};
 
 export function RoomTypePicker({
-  roomTypeId,
   value,
   onChange,
 }: {
-  roomTypeId?: string;
   value: PhotoSource | null;
   onChange: (value: PhotoSource) => void;
 }) {
-  const {
-    data: roomType,
-    isLoading,
-    isError,
-    refetch,
-  } = useRoomType(roomTypeId);
+  const { data, isLoading, isError, refetch } = useRoomTypes();
 
-  const samples = roomType?.samples ?? [];
-  const roomTypeName = roomType?.name ?? "this room type";
+  // Flatten every room type's samples into one gallery; each tile remembers its
+  // room type so picking it also sets the design's room type.
+  const tiles: SampleTile[] = (data?.items ?? []).flatMap((roomType) =>
+    roomType.samples.map((imageUrl, index) => ({
+      id: `${roomType.id}:${index}`,
+      roomTypeId: roomType.id,
+      roomTypeName: roomType.name,
+      imageUrl,
+    })),
+  );
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-medium text-fg-2">Or pick a sample room</p>
 
-      {!roomTypeId ? (
-        <p className="text-sm text-fg-3">
-          No sample rooms are available for this room type.
-        </p>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="grid grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, index) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="p-1">
               <div className="aspect-4/3 animate-pulse rounded-lg bg-muted" />
             </div>
@@ -53,36 +57,34 @@ export function RoomTypePicker({
             Retry
           </button>
         </div>
-      ) : samples.length === 0 ? (
-        <p className="text-sm text-fg-3">
-          {`No sample rooms are available for ${roomTypeName}.`}
-        </p>
+      ) : tiles.length === 0 ? (
+        <p className="text-sm text-fg-3">No sample rooms are available yet.</p>
       ) : (
         <div
           role="radiogroup"
           aria-label="Sample room"
-          className="grid max-h-60 grid-cols-3 gap-3 overflow-y-auto"
+          className="grid max-h-72 grid-cols-3 gap-3 overflow-y-auto"
         >
-          {samples.map((imageUrl, index) => {
-            const sampleId = `${roomTypeId}:${index}`;
-            const active = value?.kind === "sample" && value.id === sampleId;
+          {tiles.map((tile) => {
+            const active = value?.kind === "sample" && value.id === tile.id;
 
             return (
               <button
-                key={imageUrl}
+                key={tile.id}
                 type="button"
                 role="radio"
                 aria-checked={active}
-                aria-label={`${roomTypeName} sample ${index + 1}`}
+                aria-label={tile.roomTypeName}
                 onClick={() =>
                   onChange({
                     kind: "sample",
-                    id: sampleId,
-                    label: roomTypeName,
-                    imageUrl,
+                    id: tile.id,
+                    label: tile.roomTypeName,
+                    imageUrl: tile.imageUrl,
+                    roomTypeId: tile.roomTypeId,
                   })
                 }
-                className="flex flex-col gap-1.5 rounded-xl p-1 text-left"
+                className="group flex flex-col gap-1.5 rounded-xl p-1 text-left"
               >
                 <div
                   className={cn(
@@ -93,8 +95,8 @@ export function RoomTypePicker({
                   )}
                 >
                   <Image
-                    src={imageUrl}
-                    alt={`${roomTypeName} sample ${index + 1}`}
+                    src={tile.imageUrl}
+                    alt={tile.roomTypeName}
                     fill
                     sizes="(max-width: 768px) 33vw, 200px"
                     className={cn(
@@ -113,13 +115,13 @@ export function RoomTypePicker({
                   )}
                 </div>
                 <span
-                    className={cn(
-                      "px-0.5 text-xs font-medium transition-colors duration-fast",
-                      active ? "text-terracotta" : "text-fg-2",
-                    )}
-                  >
-                    {`Layout ${index + 1}`}
-                  </span>
+                  className={cn(
+                    "truncate px-0.5 text-xs font-medium transition-colors duration-fast",
+                    active ? "text-terracotta" : "text-fg-2",
+                  )}
+                >
+                  {tile.roomTypeName}
+                </span>
               </button>
             );
           })}

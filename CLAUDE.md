@@ -47,7 +47,7 @@ pnpm --filter api db:studio
 pnpm --filter @repo/schemas build
 ```
 
-Import subpaths directly: `import { generateDesignSchema } from "@repo/schemas/projects"`. Enum-like value arrays in schemas are the source of truth for the matching Prisma enums (e.g. `PROJECT_TYPES` ↔ `ProjectType`, `generationStatusSchema` ↔ `GenerationStatus`) — keep them in sync by hand.
+Import subpaths directly: `import { generateDesignSchema } from "@repo/schemas/designs"`. Enum-like value arrays in schemas are the source of truth for the matching Prisma enums (e.g. `DESIGN_TYPES` ↔ `DesignType`, `generationStatusSchema` ↔ `GenerationStatus`) — keep them in sync by hand.
 
 ## API architecture (`apps/api/src`)
 
@@ -62,7 +62,13 @@ Layered, one direction: **router → middleware → handler → service → Pris
 
 ### Ports & adapters (hexagonal)
 
-External providers sit behind ports so they can be faked. `ports/*.port.ts` define interfaces; `adapters/<provider>/` implement them (`fake.adapter.ts` + real, selected in `index.ts`). `CONFIG.USE_FAKE_ADAPTERS` (env `USE_FAKE_ADAPTERS=true|false`) toggles fake implementations for local dev without external services. `adapters/clerk/` is the existing reference; `adapters/image-generation/` (fal.ai) and `workers/processors/` are the redesign pipeline (some stubs in progress). Async redesign jobs use the `Generation` lifecycle (`GenerationStatus`: pending→queued→processing→completed/failed/cancelled).
+External providers sit behind ports so they can be faked. `ports/*.port.ts` define interfaces; `adapters/<provider>/` implement them (`fake.adapter.ts` + real, selected in `index.ts`). **Fake vs. real is driven by `CONFIG.USE_FAKE_ADAPTERS`, which defaults off `NODE_ENV`** — unset, it's `true` in dev/test and `false` in production; the env var `USE_FAKE_ADAPTERS=true|false` is an explicit override (staging runs as `NODE_ENV=production` but sets it `true` to test on fakes). When fakes are on, `app.ts` also serves local storage over HTTP (`/asset`, `/api/v1/dev-storage`).
+
+- `adapters/clerk/` — reference adapter (webhook user sync).
+- `adapters/image-generation/` — `fake`, `fal`, and `gemini`. When fakes are off, `CONFIG.IMAGE_GENERATION_PROVIDER` (`fal|gemini`, default **`gemini`**) picks the real one. **Gemini (`gemini-2.5-flash-image`) is the working provider; `fal.adapter.ts` is still a stub that throws.** The port's `submit(input)` returns `{ providerRequestId, image: { styleCode, url } }`.
+- `adapters/storage/` — `r2` (real) + `fake` (local disk, served back via the `dev-storage` router).
+
+Async redesign jobs use the `Generation` lifecycle (`GenerationStatus`: pending→queued→processing→completed/failed/cancelled), run by `worker.ts` + `workers/processors/redesign.processor.ts` over BullMQ. Note the worker fetches the render URL over HTTP, so with fakes it depends on the API serving `/asset` at `CONFIG.DEV_API_ORIGIN` (defaults to `http://localhost:4000`; set it to the public origin on any non-local fake deploy).
 
 ### Prisma specifics
 
@@ -75,8 +81,40 @@ External providers sit behind ports so they can be faked. `ports/*.port.ts` defi
 
 - **Feature-first.** Code lives under `feature/<domain>/` (`api/`, `components/`, `hooks/`, `lib/`, `constants.ts`), not by technical type. `app/` holds only route entry points; `(dashboard)` is a route group.
 - **Data fetching.** `lib/api/client.ts` is a shared Axios instance: an interceptor attaches the Clerk bearer token (registered once from `app/providers.tsx` via `setAuthTokenGetter`), and the response interceptor rethrows the envelope's error as a typed `ApiError`. Feature `api/*.ts` functions call it and strip the envelope (`.then((res) => res.data.data)`).
-- **Server state = React Query.** Query hooks live in `feature/*/hooks/queries/`, keyed by tuples (e.g. `["projects", id]`) so calls dedupe. Mutations live alongside. Prefer deriving UI state from a fetched entity over threading it through props/URL params.
+- **Server state = React Query.** Query hooks live in `feature/*/hooks/queries/`, keyed by tuples (e.g. `["designs", id]`) so calls dedupe. Mutations live alongside. Prefer deriving UI state from a fetched entity over threading it through props/URL params.
 - Clerk (`@clerk/nextjs`) for auth; forms use `react-hook-form` + `@hookform/resolvers` with the shared Zod schemas; toasts via `sonner`.
+- **Naming vs. routing.** The AI feature is branded **"AI Studio"** and lives at **`/ai-studio`** (`app/(dashboard)/ai-studio/`), but its code is still under `feature/ai-redesign/` — label/URL renamed, folder intentionally left. Dashboard nav is **Home · AI Studio · Profile** only.
+
+## Product scope (portfolio)
+
+Deliberately scoped small. **In:** single-room redesign, place-it-yourself, shop-these-products, plus Home and Profile. **Out (do not build / already cut):** sharing/publish, billing/subscription, whole-house, Explore, For You, Saved. The core domain entity is **`Design`** (formerly `Project` — fully renamed across schema, services, routes, and web).
+
+## Redesign pipeline — build status
+
+The single-room redesign flow is the primary vertical slice. Status (`[x]` done, `[~]` partial/WIP, `[ ]` not started):
+
+**End-to-end single-room flow (user journey)**
+
+- [x] Upload room photo (drag-drop + crop) — web `single-room/photo-upload.tsx`, `hooks/single-room/use-photo-upload.ts`
+- [x] Store source upload — API `POST /designs/:id/assets/upload` → `design.service.storeSourceUpload` → storage adapter
+- [x] Pick room type / sample room — web `room-type-picker.tsx`; API `GET /room-types`, `GET /room-types/:id`
+- [x] Pick 1–3 design styles (+ optional details text) — web `style-picker.tsx`; API `GET /design-styles`
+- [x] Submit generation — API `POST /designs/:id/generate` → `design.service.generateDesign` → enqueue via `generation-job.service` + BullMQ (`queues/generation.queue.ts`)
+- [x] Worker processes job — `worker.ts` + `workers/processors/redesign.processor.ts` (calls image-gen port, persists outputs via `asset.service`, drives `GenerationStatus` pending→queued→processing→completed/failed)
+- [x] Poll generation status — API `GET /generations/:id`; web `hooks/queries/use-generation.ts` (auto-refetch while running) + `generation-loading-overlay.tsx`. The failed state surfaces `errorMessage` (`redesign-results.tsx`).
+- [x] View result + before/after slider — web `redesign-results.tsx`, `before-after-comparison.tsx`
+- [x] Regenerate — API `POST /generations/:id/regenerate`; web `use-regenerate-generation.ts`
+- [x] Element editing — full UI (draw/move/resize regions + per-edit instructions) **and** backend: API `POST /assets/:id/edits` → `element-edit.service.ts` (produces a new generation); web `element-editor.tsx` → `onApplied` swaps the results view to the edited generation.
+- [~] Shop these products — UI renders hardcoded mock products (`shop-this-look.tsx`), Buy is a no-op (`product-card.tsx`). **To build:** a vision pass detects furniture in the render → product name/category, each linking out to a search. No real inventory/prices.
+- [ ] Place-it-yourself flow — not built (route + components were removed). **To build:** upload room → pick catalog item → position → AI composites it in. Needs a `place_it_yourself` `DesignType` + Prisma enum value.
+
+**Infrastructure & cross-cutting**
+
+- [x] Prisma schema — pipeline models defined (`User`, `Design`, `Room`, `RoomType`, `DesignStyle`, `Asset`, `Generation`, `GenerationDesignStyle`) + enums (`DesignType`, `DesignStatus`, `DesignSource`, `AssetType`, `GenerationStatus`, …).
+- [x] Storage port + adapters — R2 (`adapters/storage/r2.adapter.ts`) and fake/local both complete.
+- [x] Clerk auth — webhook user sync + `requireUser` middleware complete.
+- [x] Queue infra — BullMQ + Redis, processor, worker events all complete.
+- [x] **Real image generation works via Gemini** (`adapters/image-generation/gemini.adapter.ts`, default provider). `fal.adapter.ts` remains a stub that throws; select it with `IMAGE_GENERATION_PROVIDER=fal` only once implemented.
 
 ## Comments
 

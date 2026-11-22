@@ -23,6 +23,7 @@ app.use(
 // Clerk signature verification requires the raw body before express.json().
 app.use("/api/v1/webhooks", webhooksRouter);
 
+// Fake storage lives on local disk, so serve it over HTTP whenever it's active.
 if (CONFIG.USE_FAKE_ADAPTERS) {
   const assetDirectory = fileURLToPath(new URL("../asset", import.meta.url));
   app.use("/asset", express.static(assetDirectory));

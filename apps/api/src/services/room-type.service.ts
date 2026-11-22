@@ -12,10 +12,17 @@ export async function listRoomTypes(): Promise<{ items: RoomTypeListItem[] }> {
   const roomTypes = await prisma.roomType.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
-    select: { id: true, name: true },
+    select: { id: true, name: true, sampleImageKeys: true },
   });
 
-  return { items: roomTypes };
+  return {
+    items: roomTypes.map(({ sampleImageKeys, ...rest }) => ({
+      ...rest,
+      samples: sampleImageKeys
+        .map((key) => catalogPublicUrl(key))
+        .filter((url): url is string => url !== null),
+    })),
+  };
 }
 
 export async function getRoomTypeById(id: string): Promise<RoomTypeDetail> {

@@ -5,6 +5,9 @@ import { UnauthorizedError } from "@/core/errors";
 import { prisma } from "@/database/prisma";
 
 declare global {
+  // Express's Request type can only be extended through its global namespace;
+  // there's no ES-module equivalent, so the no-namespace rule is disabled here.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       userId?: string;

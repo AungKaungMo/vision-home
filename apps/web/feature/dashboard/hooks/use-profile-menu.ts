@@ -31,7 +31,6 @@ export function useProfileMenu() {
     initials,
     imageUrl: user?.imageUrl,
     goToProfile: () => router.push("/profile"),
-    goToSubscription: () => router.push("/subscription"),
     signOut: () => signOut({ redirectUrl: SIGN_IN_URL }),
   };
 }

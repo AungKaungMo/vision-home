@@ -2,29 +2,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { GenerateSource } from "@repo/schemas/projects";
+import type { GenerateSource } from "@repo/schemas/designs";
 
 import {
   DEFAULT_ROOM_STYLE,
+  designDetailHref,
   type PhotoSource,
 } from "@/feature/ai-redesign/constants";
 import {
+  createDesign,
   generateDesign,
   uploadSourceImage,
-} from "@/feature/ai-redesign/api/projects";
-import { useProject } from "@/feature/ai-redesign/hooks/queries/use-project";
+} from "@/feature/ai-redesign/api/designs";
+import { useDesign } from "@/feature/ai-redesign/hooks/queries/use-design";
 
 async function buildGenerateSource(
-  projectId: string,
+  designId: string,
   source: PhotoSource,
 ): Promise<GenerateSource> {
   if (source.kind === "sample") {
     return { kind: "sample", id: source.id, imageUrl: source.imageUrl };
   }
 
-  const uploaded = await uploadSourceImage(projectId, source.file);
+  const uploaded = await uploadSourceImage(designId, source.file);
 
   return {
     kind: "upload",
@@ -32,8 +35,20 @@ async function buildGenerateSource(
   };
 }
 
+/**
+ * The gallery opens the single-room form with no design yet, so the first
+ * generation creates one on the fly. A short, dated title keeps the gallery
+ * readable until proper naming exists.
+ */
+function defaultDesignName(): string {
+  const date = new Date().toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  return `Single room · ${date}`;
+}
+
 export type UseSingleRoomForm = {
-  roomTypeId: string | undefined;
   source: PhotoSource | null;
   onSourceChange: (next: PhotoSource | null) => void;
   styles: string[];
@@ -45,25 +60,34 @@ export type UseSingleRoomForm = {
   generate: () => void;
   generationId: string | null;
   selectGeneration: (generationId: string) => void;
-  isProjectLoading: boolean;
+  isDesignLoading: boolean;
 };
 
-export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
+export function useSingleRoomForm(designIdProp?: string): UseSingleRoomForm {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: project, isLoading: isProjectLoading } = useProject(projectId);
-  const roomTypeId = project?.room?.roomTypeId ?? undefined;
+
+  // When the form is opened without a design (the "Create New Design" entry
+  // point), the first generation creates one; its id is held here and reflected
+  // in the URL so a refresh keeps the same design.
+  const [createdDesignId, setCreatedDesignId] = useState<string | undefined>(
+    undefined,
+  );
+  const designId = designIdProp ?? createdDesignId;
+
+  const { data: design, isLoading: isDesignLoading } = useDesign(designId);
 
   const [source, setSource] = useState<PhotoSource | null>(null);
   const [styles, setStyles] = useState<string[]>([DEFAULT_ROOM_STYLE]);
   const [details, setDetails] = useState("");
   const [generationSelection, setGenerationSelection] = useState<{
-    projectId: string | undefined;
+    designId: string | undefined;
     generationId: string | null;
   } | null>(null);
   const generationId =
-    generationSelection !== null && generationSelection.projectId === projectId
+    generationSelection !== null && generationSelection.designId === designId
       ? generationSelection.generationId
-      : (project?.latestGenerationId ?? null);
+      : (design?.latestGenerationId ?? null);
 
   // Own the uploaded object URL's lifecycle here, since both PhotoUpload and
   // RoomTypePicker swap `source`: revoke the previous upload URL on every
@@ -87,30 +111,49 @@ export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
   );
 
   const mutation = useMutation({
-    mutationFn: async ({
-      projectId,
-      source,
-    }: {
-      projectId: string;
-      source: PhotoSource;
-    }) => {
-      const generateSource = await buildGenerateSource(projectId, source);
-      return generateDesign(projectId, {
+    mutationFn: async ({ source }: { source: PhotoSource }) => {
+      // A chosen sample implies its room type — carry it onto the design so the
+      // backend can validate the sample and the AI gets the room-type hint.
+      const roomTypeId =
+        design?.room?.roomTypeId ??
+        (source.kind === "sample" ? source.roomTypeId : undefined);
+
+      let id = designId;
+      if (!id) {
+        const created = await createDesign({
+          name: defaultDesignName(),
+          type: "single_room",
+          ...(roomTypeId ? { roomTypeId } : {}),
+        });
+        if (!created) throw new Error("Couldn't create the design");
+        id = created.id;
+      }
+
+      const generateSource = await buildGenerateSource(id, source);
+      const result = await generateDesign(id, {
         source: generateSource,
         ...(styles.length > 0 ? { styles } : {}),
         details: details.trim() || undefined,
       });
+
+      return { designId: id, result };
     },
-    onSuccess: (result, variables) => {
+    onSuccess: ({ designId: id, result }) => {
+      // A design created here is only known client-side — persist it to the URL
+      // so polling, refetch, and a refresh all resolve the same design.
+      if (!designIdProp && id !== designId) {
+        setCreatedDesignId(id);
+        router.replace(designDetailHref(id), { scroll: false });
+      }
+
       if (result?.generationId) {
         setGenerationSelection({
-          projectId: variables.projectId,
+          designId: id,
           generationId: result.generationId,
         });
-        void queryClient.invalidateQueries({
-          queryKey: ["projects", variables.projectId],
-        });
       }
+      void queryClient.invalidateQueries({ queryKey: ["designs"] });
+
       const count = styles.length;
       toast(
         count > 0
@@ -125,12 +168,11 @@ export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
   });
 
   function generate() {
-    if (!source || !projectId) return;
-    mutation.mutate({ projectId, source });
+    if (!source) return;
+    mutation.mutate({ source });
   }
 
   return {
-    roomTypeId,
     source,
     onSourceChange,
     styles,
@@ -142,7 +184,7 @@ export function useSingleRoomForm(projectId?: string): UseSingleRoomForm {
     generate,
     generationId,
     selectGeneration: (nextGenerationId) =>
-      setGenerationSelection({ projectId, generationId: nextGenerationId }),
-    isProjectLoading: Boolean(projectId) && isProjectLoading,
+      setGenerationSelection({ designId, generationId: nextGenerationId }),
+    isDesignLoading: Boolean(designId) && isDesignLoading,
   };
 }

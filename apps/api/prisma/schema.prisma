@@ -8,28 +8,33 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ProjectStatus {
+enum DesignStatus {
   draft
   active
   archived
 
-  @@map("project_status")
+  @@map("design_status")
 }
 
-enum ProjectVisibility {
+enum DesignVisibility {
   private
   unlisted
   public
 
-  @@map("project_visibility")
+  @@map("design_visibility")
 }
 
-enum ProjectType {
+enum DesignType {
   single_room
-  whole_house
-  place_it_yourself
 
-  @@map("project_type")
+  @@map("design_type")
+}
+
+enum DesignSource {
+  generated
+  edited
+
+  @@map("design_source")
 }
 
 enum RoomTypeSource {
@@ -61,7 +66,7 @@ model User {
   id        String  @id @default(uuid()) @db.Uuid
   clerkId   String  @unique(map: "users_clerk_id_key") @map("clerk_id") @db.VarChar(255)
   email     String  @db.VarChar(320)
-  username  String  @db.VarChar(30)
+  username  String  @unique(map: "users_username_key") @db.VarChar(30)
   fullName  String? @map("full_name") @db.VarChar(120)
   avatarUrl String? @map("avatar_url") @db.Text
   bio       String? @db.VarChar(300)
@@ -71,22 +76,25 @@ model User {
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  projects Project[]
+  designs Design[]
 
   @@map("users")
 }
 
-model Project {
+model Design {
   id      String @id @default(uuid()) @db.Uuid
   ownerId String @map("owner_id") @db.Uuid
 
-  type ProjectType
+  type   DesignType
+  source DesignSource @default(generated)
 
   title       String  @db.VarChar(120)
   description String? @db.VarChar(500)
 
-  status     ProjectStatus     @default(draft)
-  visibility ProjectVisibility @default(private)
+  status     DesignStatus     @default(draft)
+  visibility DesignVisibility @default(private)
+
+  isFavorite Boolean @default(false) @map("is_favorite")
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -95,10 +103,10 @@ model Project {
   owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   rooms Room[]
 
-  @@index([ownerId, updatedAt], map: "projects_owner_updated_idx")
-  @@index([ownerId, type], map: "projects_owner_type_idx")
-  @@index([visibility, createdAt], map: "projects_visibility_created_idx")
-  @@map("projects")
+  @@index([ownerId, updatedAt], map: "designs_owner_updated_idx")
+  @@index([ownerId, type], map: "designs_owner_type_idx")
+  @@index([visibility, createdAt], map: "designs_visibility_created_idx")
+  @@map("designs")
 }
 
 model RoomType {
@@ -145,7 +153,7 @@ model DesignStyle {
 model Room {
   id String @id @default(uuid()) @db.Uuid
 
-  projectId  String  @map("project_id") @db.Uuid
+  designId   String  @map("design_id") @db.Uuid
   roomTypeId String? @map("room_type_id") @db.Uuid
 
   roomTypeSource RoomTypeSource? @map("room_type_source")
@@ -158,12 +166,12 @@ model Room {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  design      Design       @relation(fields: [designId], references: [id], onDelete: Cascade)
   roomType    RoomType?    @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
   assets      Asset[]
   generations Generation[]
 
-  @@index([projectId, createdAt], map: "rooms_project_created_idx")
+  @@index([designId, createdAt], map: "rooms_design_created_idx")
   @@index([roomTypeId], map: "rooms_room_type_idx")
   @@map("rooms")
 }

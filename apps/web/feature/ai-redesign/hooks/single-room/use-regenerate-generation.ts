@@ -14,7 +14,7 @@ export function useRegenerateGeneration(
     mutationFn: regenerateGeneration,
     onSuccess: (result) => {
       onRegenerated(result.generationId);
-      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["designs"] });
     },
     onError: () => toast.error("Something went wrong"),
   });

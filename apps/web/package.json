@@ -29,6 +29,7 @@
     "react-dom": "^19.2.0",
     "react-easy-crop": "^6.2.3",
     "react-hook-form": "^7.85.0",
+    "react-rnd": "^10.5.3",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",

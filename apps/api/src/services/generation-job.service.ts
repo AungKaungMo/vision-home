@@ -1,4 +1,4 @@
-import type { GenerateDesignResult } from "@repo/schemas/projects";
+import type { GenerateDesignResult } from "@repo/schemas/designs";
 
 import { ServiceUnavailableError } from "@/core/errors";
 import { logger } from "@/core/logger";

@@ -1,3 +1,5 @@
+import { applyElementEditsSchema } from "@repo/schemas/designs";
+
 import { imageGeneration } from "@/adapters/image-generation";
 import { storagePublicUrl } from "@/core/storage";
 import { prisma } from "@/database/prisma";
@@ -5,9 +7,10 @@ import { persistGenerationOutput } from "@/services/asset.service";
 
 /**
  * Run a redesign job to completion: mark it processing, ask the image provider
- * to render the source photo in each requested style, then record the outcome.
- * Consumed by the BullMQ generation worker. Provider and persistence errors are
- * written back to the generation row as `failed`.
+ * to render the source in each requested style (or apply element edits when the
+ * job carries `parameters.edits`), then record the outcome. Consumed by the
+ * BullMQ generation worker. Provider and persistence errors are written back to
+ * the generation row as `failed`.
  */
 export async function processGeneration(generationId: string): Promise<void> {
   const generation = await prisma.generation.findUnique({
@@ -16,6 +19,7 @@ export async function processGeneration(generationId: string): Promise<void> {
       status: true,
       roomId: true,
       additionalDetails: true,
+      parameters: true,
       sourceAsset: { select: { storageKey: true } },
       assets: {
         where: { type: "generated", deletedAt: null },
@@ -54,15 +58,26 @@ export async function processGeneration(generationId: string): Promise<void> {
       );
     }
 
-    const result = await imageGeneration.submit({
-      sourceImageUrl,
-      styles: generation.designStyles.map(({ designStyle }) => ({
-        code: designStyle.code,
-        promptHint: designStyle.promptHint,
-      })),
-      details: generation.additionalDetails,
-      roomTypeHint: generation.room.roomType?.promptHint ?? null,
-    });
+    const roomTypeHint = generation.room.roomType?.promptHint ?? null;
+    // An element-edit job carries `parameters.edits` and runs against the base
+    // render (its source asset) rather than rendering styles from scratch.
+    const edit = applyElementEditsSchema.safeParse(generation.parameters);
+
+    const result = edit.success
+      ? await imageGeneration.edit({
+          baseImageUrl: sourceImageUrl,
+          edits: edit.data.edits,
+          roomTypeHint,
+        })
+      : await imageGeneration.submit({
+          sourceImageUrl,
+          styles: generation.designStyles.map(({ designStyle }) => ({
+            code: designStyle.code,
+            promptHint: designStyle.promptHint,
+          })),
+          details: generation.additionalDetails,
+          roomTypeHint,
+        });
 
     await persistGenerationOutput(
       generation.roomId,

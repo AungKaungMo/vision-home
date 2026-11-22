@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { IMAGE_EXTENSION_BY_MIME } from "@repo/schemas/projects";
-import type { ImageMimeType } from "@repo/schemas/projects";
+import { IMAGE_EXTENSION_BY_MIME } from "@repo/schemas/designs";
+import type { ImageMimeType } from "@repo/schemas/designs";
 
 import { storage } from "@/adapters/storage";
 import { r2Storage } from "@/adapters/storage/r2.adapter";

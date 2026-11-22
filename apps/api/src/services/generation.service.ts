@@ -1,7 +1,7 @@
 import type {
   GenerateDesignResult,
   GenerationDetail,
-} from "@repo/schemas/projects";
+} from "@repo/schemas/designs";
 
 import { imageGeneration } from "@/adapters/image-generation";
 import { BadRequestError, ConflictError, NotFoundError } from "@/core/errors";
@@ -13,7 +13,7 @@ const RUNNING_STATUSES = new Set(["pending", "queued", "processing"]);
 
 /**
  * Load a redesign job for the results view, scoped to its owner (generation →
- * room → project → `ownerId`). Returns the source image plus one output per
+ * room → design → `ownerId`). Returns the source image plus one output per
  * rendered style; the web app polls this until `status` is terminal.
  */
 export async function getGenerationById(
@@ -23,7 +23,7 @@ export async function getGenerationById(
   const generation = await prisma.generation.findFirst({
     where: {
       id: generationId,
-      room: { project: { ownerId, deletedAt: null } },
+      room: { design: { ownerId, deletedAt: null } },
     },
     select: {
       id: true,
@@ -72,7 +72,7 @@ export async function regenerateGeneration(
   const original = await prisma.generation.findFirst({
     where: {
       id: generationId,
-      room: { project: { ownerId, deletedAt: null } },
+      room: { design: { ownerId, deletedAt: null } },
     },
     select: {
       status: true,

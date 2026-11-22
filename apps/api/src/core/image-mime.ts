@@ -1,4 +1,4 @@
-import type { ImageMimeType } from "@repo/schemas/projects";
+import type { ImageMimeType } from "@repo/schemas/designs";
 
 const MIME_BY_IMAGE_TYPE: Record<string, ImageMimeType> = {
   avif: "image/avif",

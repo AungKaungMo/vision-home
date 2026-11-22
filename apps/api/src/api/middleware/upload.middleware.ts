@@ -1,6 +1,6 @@
 import multer from "multer";
 import type { RequestHandler } from "express";
-import { IMAGE_MIME_TYPES, MAX_UPLOAD_BYTES } from "@repo/schemas/projects";
+import { IMAGE_MIME_TYPES, MAX_UPLOAD_BYTES } from "@repo/schemas/designs";
 
 import { BadRequestError } from "@/core/errors";
 

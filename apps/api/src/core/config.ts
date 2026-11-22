@@ -34,10 +34,12 @@ const configSchema = z.object({
   CLERK_WEBHOOK_SIGNING_SECRET: z
     .string()
     .min(1, "CLERK_WEBHOOK_SIGNING_SECRET is required"),
+  // Optional override: left unset, the default derives from NODE_ENV below.
+  // Staging runs as NODE_ENV=production but sets this true to test on fakes.
   USE_FAKE_ADAPTERS: z
     .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === "true")),
   FAL_KEY: optionalString,
   R2_ACCOUNT_ID: optionalString,
   R2_ACCESS_KEY_ID: optionalString,
@@ -61,4 +63,9 @@ export const CONFIG = Object.freeze({
   DEV_API_ORIGIN:
     result.data.DEV_API_ORIGIN?.replace(/\/$/, "") ??
     `http://localhost:${result.data.PORT}`,
+  // Real providers only in production by default; dev and test fall back to
+  // fakes. An explicit USE_FAKE_ADAPTERS wins — that's how staging (which runs
+  // as NODE_ENV=production) opts back into fakes for testing.
+  USE_FAKE_ADAPTERS:
+    result.data.USE_FAKE_ADAPTERS ?? result.data.NODE_ENV !== "production",
 });
