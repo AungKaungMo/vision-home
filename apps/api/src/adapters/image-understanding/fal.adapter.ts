@@ -13,31 +13,66 @@ const MODEL_ID = "fal-ai/moondream2/visual-query";
 const PROMPT =
   "Classify this photo as exactly one word from: room, person, animal, food, object, outdoor. Which is it?";
 
-const PRODUCTS_PROMPT =
-  "List the main furniture and decor items in this interior, one per line, " +
-  `formatted exactly as "Category: Item name" (e.g. "Seating: Linen sofa"). ` +
-  `Use a short general category. List at most ${MAX_DETECTED_PRODUCTS} items, no extra text.`;
-
 /**
- * Parse the VLM's "Category: Item name" lines into products, dropping anything
- * malformed (blank lines, list bullets, a stray sentence). Deliberately lenient:
- * a flaky line is skipped rather than failing the whole detection.
+ * Florence-2 object detection — grounds every label in a real bounding box, so
+ * (unlike a VLM asked to "list the furniture") it only reports items actually in
+ * the frame and won't invent a sofa for an empty room.
  */
-function parseProductLines(output: string): DetectedProduct[] {
-  const products: DetectedProduct[] = [];
-  for (const raw of output.split("\n")) {
-    const line = raw.replace(/^[\s\d.*-]+/, "").trim();
-    const separator = line.indexOf(":");
-    if (separator <= 0) continue;
+const DETECTION_MODEL = "fal-ai/florence-2-large/object-detection";
 
-    const category = line.slice(0, separator).trim();
-    const name = line.slice(separator + 1).trim();
-    if (category && name) {
-      products.push({ category, name });
-    }
-    if (products.length >= MAX_DETECTED_PRODUCTS) break;
+/** Architecture, surfaces, and people — detected, but not shoppable furniture. */
+const NON_PRODUCT = new Set([
+  "house",
+  "home",
+  "building",
+  "room",
+  "wall",
+  "floor",
+  "ceiling",
+  "window",
+  "door",
+  "stairs",
+  "fireplace",
+  "vent",
+  "air vent",
+  "radiator",
+  "outlet",
+  "power outlet",
+  "switch",
+  "light switch",
+  "thermostat",
+  "smoke detector",
+  "person",
+  "man",
+  "woman",
+  "human face",
+  "boy",
+  "girl",
+]);
+
+/** Map a detected label to a broad shopping category; first match wins. */
+const CATEGORY_RULES: [RegExp, string][] = [
+  [/sofa|couch|armchair|chair|stool|bench|ottoman|seat/, "Seating"],
+  [/coffee table|side table|nightstand|desk|table|console/, "Tables"],
+  [/lamp|light|chandelier|sconce|lantern/, "Lighting"],
+  [/plant|flower|vase|pot/, "Plants & Decor"],
+  [/rug|carpet|mat/, "Rugs"],
+  [/picture|painting|mirror|frame|clock|art/, "Wall Decor"],
+  [/shelf|cabinet|bookcase|bookshelf|drawer|dresser|wardrobe|sideboard/, "Storage"],
+  [/bed|headboard/, "Beds"],
+  [/pillow|cushion|throw|blanket|curtain|drape/, "Textiles"],
+  [/tv|television|monitor/, "Electronics"],
+];
+
+function titleCase(label: string): string {
+  return label.replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function categoryFor(label: string): string {
+  for (const [pattern, category] of CATEGORY_RULES) {
+    if (pattern.test(label)) return category;
   }
-  return products;
+  return "Decor";
 }
 
 /**
@@ -50,6 +85,7 @@ const BLOCKED = ["person", "animal", "food"];
 const REJECTION = "That doesn't look like a room photo — try an interior shot.";
 
 type MoondreamResult = { output?: string };
+type FlorenceResult = { results?: { bboxes?: { label?: string }[] } };
 
 export const falImageUnderstanding: ImageUnderstandingPort = {
   async isInteriorRoom(image) {
@@ -64,11 +100,19 @@ export const falImageUnderstanding: ImageUnderstandingPort = {
   },
 
   async detectProducts(image) {
-    const { data } = await runFalQueue<MoondreamResult>(MODEL_ID, {
+    const { data } = await runFalQueue<FlorenceResult>(DETECTION_MODEL, {
       image_url: image,
-      prompt: PRODUCTS_PROMPT,
     });
 
-    return parseProductLines(data.output ?? "");
+    const products: DetectedProduct[] = [];
+    const seen = new Set<string>();
+    for (const box of data.results?.bboxes ?? []) {
+      const label = (box.label ?? "").trim().toLowerCase();
+      if (!label || NON_PRODUCT.has(label) || seen.has(label)) continue;
+      seen.add(label);
+      products.push({ name: titleCase(label), category: categoryFor(label) });
+      if (products.length >= MAX_DETECTED_PRODUCTS) break;
+    }
+    return products;
   },
 };
