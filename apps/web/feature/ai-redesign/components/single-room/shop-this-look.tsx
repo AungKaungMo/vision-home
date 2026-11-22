@@ -41,12 +41,12 @@ export function ShopThisLook({ generationId }: { generationId: string }) {
           : "AI spotted these pieces in your redesign — tap to shop similar ones."}
       </p>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isLoading
-          ? Array.from({ length: 6 }).map((_, index) => (
+          ? Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className="h-[76px] animate-pulse rounded-2xl border border-border bg-muted"
+                className="h-72 animate-pulse rounded-2xl border border-border bg-muted"
               />
             ))
           : products.map((product) => (

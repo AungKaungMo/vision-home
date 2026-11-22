@@ -191,22 +191,27 @@ export const generationDetailSchema = z.object({
 export type GenerationDetail = z.infer<typeof generationDetailSchema>;
 
 /**
- * A furniture/decor item a vision pass spotted in a completed render. No real
- * inventory — `name` + `category` are what the web turns into a shop search
- * link. Returned by GET /api/v1/generations/:id/products.
+ * A shoppable product surfaced under a render: the vision pass names a piece in
+ * the image, then a shopping search resolves it to a real listing (photo, price,
+ * retailer, buy link). `name`/`category` come from detection; the rest from the
+ * matched product. Returned by GET /api/v1/generations/:id/products.
  */
-export const detectedProductSchema = z.object({
+export const shopProductSchema = z.object({
   name: z.string().min(1),
   category: z.string().min(1),
+  imageUrl: z.string().url().nullable(),
+  price: z.string().nullable(),
+  source: z.string().nullable(),
+  buyUrl: z.string().url(),
 });
 
-export type DetectedProduct = z.infer<typeof detectedProductSchema>;
+export type ShopProduct = z.infer<typeof shopProductSchema>;
 
-/** At most this many products are surfaced under a render. */
+/** At most this many items are detected per render (caps shopping lookups too). */
 export const MAX_DETECTED_PRODUCTS = 8;
 
 export const generationProductsSchema = z.object({
-  products: z.array(detectedProductSchema),
+  products: z.array(shopProductSchema),
 });
 
 export type GenerationProducts = z.infer<typeof generationProductsSchema>;

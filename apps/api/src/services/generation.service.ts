@@ -1,19 +1,54 @@
 import {
-  detectedProductSchema,
   type GenerateDesignResult,
   type GenerationDetail,
   type GenerationProducts,
+  type ShopProduct,
+  shopProductSchema,
 } from "@repo/schemas/designs";
 import { z } from "zod";
 
 import { imageGeneration } from "@/adapters/image-generation";
 import { imageUnderstanding } from "@/adapters/image-understanding";
+import { productSearch } from "@/adapters/product-search";
 import { BadRequestError, ConflictError, NotFoundError } from "@/core/errors";
+import { logger } from "@/core/logger";
 import { headObject, storagePublicUrl } from "@/core/storage";
 import { prisma } from "@/database/prisma";
 import { queueGeneration } from "@/services/generation-job.service";
 
-const storedProductsSchema = z.array(detectedProductSchema);
+const storedProductsSchema = z.array(shopProductSchema);
+
+/**
+ * Resolve a detected item to a buyable product. A single failed lookup (no
+ * match, rate limit, missing key) drops just that item rather than failing the
+ * whole "shop this look" panel.
+ */
+async function resolveProduct(item: {
+  name: string;
+  category: string;
+}): Promise<ShopProduct | null> {
+  try {
+    const listing = await productSearch.searchTopProduct(
+      `${item.name} ${item.category}`,
+    );
+    if (!listing) return null;
+
+    return {
+      name: item.name,
+      category: item.category,
+      imageUrl: listing.imageUrl,
+      price: listing.price,
+      source: listing.source,
+      buyUrl: listing.buyUrl,
+    };
+  } catch (error) {
+    logger.warn("product search failed", {
+      item,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
 const RUNNING_STATUSES = new Set(["pending", "queued", "processing"]);
 
@@ -114,7 +149,10 @@ export async function getGenerationProducts(
     return { products: [] };
   }
 
-  const products = await imageUnderstanding.detectProducts(renderUrl);
+  const detected = await imageUnderstanding.detectProducts(renderUrl);
+  const resolved = await Promise.all(detected.map(resolveProduct));
+  const products = resolved.filter((p): p is ShopProduct => p !== null);
+
   await prisma.generation.update({
     where: { id: generationId },
     data: { products },
