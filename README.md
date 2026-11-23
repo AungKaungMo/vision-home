@@ -1,8 +1,8 @@
 # VisionHome
 
 AI interior-design studio. Upload a photo of a room, pick design styles, and get
-an AI-generated redesign — then refine individual elements, place catalog items
-yourself, and shop the look.
+an AI-generated redesign — then refine individual elements, regenerate, and shop
+the look (real products detected in the render).
 
 This is a portfolio project, deliberately scoped to a few deep features rather
 than a broad product. See [`CLAUDE.md`](./CLAUDE.md) for the full architecture
@@ -14,7 +14,7 @@ and current build status.
 - **Web** (`apps/web`) — Next.js 16 App Router, React 19, TanStack Query, Clerk, Tailwind
 - **API** (`apps/api`) — Express 5, Prisma 7 (Postgres), BullMQ worker, TypeScript (ESM)
 - **Shared** — `@repo/schemas` (Zod contracts), `@repo/ui`, shared ESLint/TS config
-- **External** — Clerk (auth), Google Gemini (image generation), Cloudflare R2 (storage), Redis (queue)
+- **External** — Clerk (auth), fal (image generation + understanding), Serper.dev (product search), Cloudflare R2 (storage), Redis (queue)
 
 External providers sit behind ports/adapters and can be faked, so the whole app
 runs end-to-end locally without any provider keys (`USE_FAKE_ADAPTERS`, which
@@ -48,7 +48,7 @@ docker compose up -d postgres redis
 # 2. Configure env — the API parses process.env through a Zod schema at boot.
 #    apps/api/src/core/config.ts is the source of truth for required/optional vars.
 #    At minimum: DATABASE_URL, REDIS_URL, and Clerk keys. Leave USE_FAKE_ADAPTERS
-#    unset in dev to run with fake providers (no Gemini/R2 keys needed).
+#    unset in dev to run with fake providers (no fal/Serper/R2 keys needed).
 
 # 3. Set up the database
 pnpm --filter api db:migrate
