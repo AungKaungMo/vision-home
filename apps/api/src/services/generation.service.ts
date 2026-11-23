@@ -19,34 +19,40 @@ import { queueGeneration } from "@/services/generation-job.service";
 const storedProductsSchema = z.array(shopProductSchema);
 
 /**
- * Resolve a detected item to a buyable product. A single failed lookup (no
- * match, rate limit, missing key) drops just that item rather than failing the
- * whole "shop this look" panel.
+ * Resolve a detected item to a buyable product. `errored` distinguishes a
+ * genuine no-match (don't retry — there's nothing to buy) from a transient
+ * failure (rate limit, outage, missing key) so the caller can avoid caching a
+ * result that a later view could fill in.
  */
+type ResolveResult = { product: ShopProduct | null; errored: boolean };
+
 async function resolveProduct(item: {
   name: string;
   category: string;
-}): Promise<ShopProduct | null> {
+}): Promise<ResolveResult> {
   try {
-    const listing = await productSearch.searchTopProduct(
-      `${item.name} ${item.category}`,
-    );
-    if (!listing) return null;
+    // Search by the item name only — the category is our own UI bucket
+    // ("Wall Decor", "Plants & Decor") and just adds noise to the query.
+    const listing = await productSearch.searchTopProduct(item.name);
+    if (!listing) return { product: null, errored: false };
 
     return {
-      name: item.name,
-      category: item.category,
-      imageUrl: listing.imageUrl,
-      price: listing.price,
-      source: listing.source,
-      buyUrl: listing.buyUrl,
+      product: {
+        name: item.name,
+        category: item.category,
+        imageUrl: listing.imageUrl,
+        price: listing.price,
+        source: listing.source,
+        buyUrl: listing.buyUrl,
+      },
+      errored: false,
     };
   } catch (error) {
     logger.warn("product search failed", {
       item,
       error: error instanceof Error ? error.message : String(error),
     });
-    return null;
+    return { product: null, errored: true };
   }
 }
 
@@ -149,14 +155,32 @@ export async function getGenerationProducts(
     return { products: [] };
   }
 
-  const detected = await imageUnderstanding.detectProducts(renderUrl);
-  const resolved = await Promise.all(detected.map(resolveProduct));
-  const products = resolved.filter((p): p is ShopProduct => p !== null);
+  let detected;
+  try {
+    detected = await imageUnderstanding.detectProducts(renderUrl);
+  } catch (error) {
+    // Detection failing shouldn't 500 the panel (and trigger client retries);
+    // degrade to empty, uncached, so a later view can try again.
+    logger.warn("product detection failed", {
+      generationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { products: [] };
+  }
 
-  await prisma.generation.update({
-    where: { id: generationId },
-    data: { products },
-  });
+  const resolved = await Promise.all(detected.map(resolveProduct));
+  const products = resolved.flatMap((r) => (r.product ? [r.product] : []));
+  const hadFailure = resolved.some((r) => r.errored);
+
+  // Only cache a clean result. If a search failed transiently, leave the cache
+  // empty so a later view can fill it in once the provider recovers — otherwise
+  // one Serper outage would hide the panel for this render permanently.
+  if (!hadFailure) {
+    await prisma.generation.update({
+      where: { id: generationId },
+      data: { products },
+    });
+  }
 
   return { products };
 }
