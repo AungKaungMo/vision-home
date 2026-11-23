@@ -19,6 +19,13 @@ import { queueGeneration } from "@/services/generation-job.service";
 const storedProductsSchema = z.array(shopProductSchema);
 
 /**
+ * Cap how many detected items get a (paid, rate-limited) Serper lookup per
+ * render. Detection can return up to MAX_DETECTED_PRODUCTS; we shop only the
+ * first few to bound cost and avoid a parallel burst tripping rate limits.
+ */
+const MAX_SHOPPED_PRODUCTS = 6;
+
+/**
  * Resolve a detected item to a buyable product. `errored` distinguishes a
  * genuine no-match (don't retry — there's nothing to buy) from a transient
  * failure (rate limit, outage, missing key) so the caller can avoid caching a
@@ -36,17 +43,27 @@ async function resolveProduct(item: {
     const listing = await productSearch.searchTopProduct(item.name);
     if (!listing) return { product: null, errored: false };
 
-    return {
-      product: {
-        name: item.name,
-        category: item.category,
-        imageUrl: listing.imageUrl,
-        price: listing.price,
-        source: listing.source,
+    // Validate against the stored contract here: the read path re-parses the
+    // cache with shopProductSchema, so a malformed provider value (e.g. a
+    // non-URL buyUrl) must be dropped now or it would fail reparse forever and
+    // re-run the whole pass on every view.
+    const parsed = shopProductSchema.safeParse({
+      name: item.name,
+      category: item.category,
+      imageUrl: listing.imageUrl,
+      price: listing.price,
+      source: listing.source,
+      buyUrl: listing.buyUrl,
+    });
+    if (!parsed.success) {
+      logger.warn("product listing failed validation", {
+        item,
         buyUrl: listing.buyUrl,
-      },
-      errored: false,
-    };
+      });
+      return { product: null, errored: false };
+    }
+
+    return { product: parsed.data, errored: false };
   } catch (error) {
     logger.warn("product search failed", {
       item,
@@ -168,7 +185,8 @@ export async function getGenerationProducts(
     return { products: [] };
   }
 
-  const resolved = await Promise.all(detected.map(resolveProduct));
+  const shortlist = detected.slice(0, MAX_SHOPPED_PRODUCTS);
+  const resolved = await Promise.all(shortlist.map(resolveProduct));
   const products = resolved.flatMap((r) => (r.product ? [r.product] : []));
   const hadFailure = resolved.some((r) => r.errored);
 
