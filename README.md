@@ -74,6 +74,11 @@ pnpm dev
 - Web → **http://localhost:3001**
 - API → **http://localhost:4000**
 
+`pnpm dev` also starts the **generation worker** — a separate process that pulls
+redesign jobs off the BullMQ queue and runs the image pipeline. Without it,
+generations are enqueued but never processed (they stay `queued` forever). Run
+it on its own with `pnpm --filter api dev:worker`.
+
 With `USE_FAKE_ADAPTERS` unset (the dev default), image generation, product
 search, and storage all use local fakes — no fal / Serper / R2 keys needed. The
 only keys you must provide are **Clerk** (auth can't be faked).
@@ -134,6 +139,7 @@ pnpm --filter api db:studio    # Prisma Studio
 pnpm dev              # all apps + worker via turbo (web:3001, api:4000)
 pnpm dev:api          # API only
 pnpm dev:web          # web only
+pnpm --filter api dev:worker   # generation worker only
 pnpm build            # build everything (respects dependency order)
 pnpm lint             # eslint --max-warnings 0 across the graph
 pnpm check-types      # typecheck across the graph
