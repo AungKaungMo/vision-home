@@ -1,0 +1,273 @@
+import {
+  type GenerateDesignResult,
+  type GenerationDetail,
+  type GenerationProducts,
+  type ShopProduct,
+  shopProductSchema,
+} from "@repo/schemas/designs";
+import { z } from "zod";
+
+import { imageGeneration } from "@/adapters/image-generation";
+import { imageUnderstanding } from "@/adapters/image-understanding";
+import { productSearch } from "@/adapters/product-search";
+import { BadRequestError, ConflictError, NotFoundError } from "@/core/errors";
+import { logger } from "@/core/logger";
+import { headObject, storagePublicUrl } from "@/core/storage";
+import { prisma } from "@/database/prisma";
+import { queueGeneration } from "@/services/generation-job.service";
+
+const storedProductsSchema = z.array(shopProductSchema);
+
+/**
+ * Cap how many detected items get a (paid, rate-limited) Serper lookup per
+ * render. Detection can return up to MAX_DETECTED_PRODUCTS; we shop only the
+ * first few to bound cost and avoid a parallel burst tripping rate limits.
+ */
+const MAX_SHOPPED_PRODUCTS = 6;
+
+/**
+ * Resolve a detected item to a buyable product. `errored` distinguishes a
+ * genuine no-match (don't retry — there's nothing to buy) from a transient
+ * failure (rate limit, outage, missing key) so the caller can avoid caching a
+ * result that a later view could fill in.
+ */
+type ResolveResult = { product: ShopProduct | null; errored: boolean };
+
+async function resolveProduct(item: {
+  name: string;
+  category: string;
+}): Promise<ResolveResult> {
+  try {
+    // Search by the item name only — the category is our own UI bucket
+    // ("Wall Decor", "Plants & Decor") and just adds noise to the query.
+    const listing = await productSearch.searchTopProduct(item.name);
+    if (!listing) return { product: null, errored: false };
+
+    // Validate against the stored contract here: the read path re-parses the
+    // cache with shopProductSchema, so a malformed provider value (e.g. a
+    // non-URL buyUrl) must be dropped now or it would fail reparse forever and
+    // re-run the whole pass on every view.
+    const parsed = shopProductSchema.safeParse({
+      name: item.name,
+      category: item.category,
+      imageUrl: listing.imageUrl,
+      price: listing.price,
+      source: listing.source,
+      buyUrl: listing.buyUrl,
+    });
+    if (!parsed.success) {
+      logger.warn("product listing failed validation", {
+        item,
+        buyUrl: listing.buyUrl,
+      });
+      return { product: null, errored: false };
+    }
+
+    return { product: parsed.data, errored: false };
+  } catch (error) {
+    logger.warn("product search failed", {
+      item,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { product: null, errored: true };
+  }
+}
+
+const RUNNING_STATUSES = new Set(["pending", "queued", "processing"]);
+
+/**
+ * Load a redesign job for the results view, scoped to its owner (generation →
+ * room → design → `ownerId`). Returns the source image plus one output per
+ * rendered style; the web app polls this until `status` is terminal.
+ */
+export async function getGenerationById(
+  ownerId: string,
+  generationId: string,
+): Promise<GenerationDetail> {
+  const generation = await prisma.generation.findFirst({
+    where: {
+      id: generationId,
+      room: { design: { ownerId, deletedAt: null } },
+    },
+    select: {
+      id: true,
+      status: true,
+      errorMessage: true,
+      createdAt: true,
+      sourceAsset: { select: { storageKey: true } },
+      assets: {
+        where: { type: "generated", deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, styleCode: true, storageKey: true },
+      },
+    },
+  });
+
+  if (!generation) {
+    throw new NotFoundError("Generation not found");
+  }
+
+  const sourceImageUrl = storagePublicUrl(generation.sourceAsset.storageKey);
+  if (!sourceImageUrl) {
+    throw new Error("Source asset has no public URL (is storage configured?)");
+  }
+
+  const outputs = generation.assets.flatMap((asset) => {
+    const imageUrl = storagePublicUrl(asset.storageKey);
+    return imageUrl
+      ? [{ id: asset.id, styleCode: asset.styleCode, imageUrl }]
+      : [];
+  });
+
+  return {
+    id: generation.id,
+    status: generation.status,
+    sourceImageUrl,
+    outputs,
+    errorMessage: generation.errorMessage,
+    createdAt: generation.createdAt.toISOString(),
+  };
+}
+
+/**
+ * "Shop this look" for a completed render, scoped to its owner. The vision pass
+ * is expensive, so the detected products are cached on the generation on first
+ * request and replayed afterwards. A render with no generated output yet (still
+ * running, or failed) simply yields an empty list rather than an error.
+ */
+export async function getGenerationProducts(
+  ownerId: string,
+  generationId: string,
+): Promise<GenerationProducts> {
+  const generation = await prisma.generation.findFirst({
+    where: {
+      id: generationId,
+      room: { design: { ownerId, deletedAt: null } },
+    },
+    select: {
+      products: true,
+      assets: {
+        where: { type: "generated", deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { storageKey: true },
+      },
+    },
+  });
+
+  if (!generation) {
+    throw new NotFoundError("Generation not found");
+  }
+
+  if (generation.products !== null) {
+    // Tolerate a legacy/garbled cache by re-detecting rather than 500ing.
+    const cached = storedProductsSchema.safeParse(generation.products);
+    if (cached.success) {
+      return { products: cached.data };
+    }
+  }
+
+  const renderUrl = storagePublicUrl(generation.assets.at(0)?.storageKey);
+  if (!renderUrl) {
+    return { products: [] };
+  }
+
+  let detected;
+  try {
+    detected = await imageUnderstanding.detectProducts(renderUrl);
+  } catch (error) {
+    // Detection failing shouldn't 500 the panel (and trigger client retries);
+    // degrade to empty, uncached, so a later view can try again.
+    logger.warn("product detection failed", {
+      generationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { products: [] };
+  }
+
+  const shortlist = detected.slice(0, MAX_SHOPPED_PRODUCTS);
+  const resolved = await Promise.all(shortlist.map(resolveProduct));
+  const products = resolved.flatMap((r) => (r.product ? [r.product] : []));
+  const hadFailure = resolved.some((r) => r.errored);
+
+  // Only cache a clean result. If a search failed transiently, leave the cache
+  // empty so a later view can fill it in once the provider recovers — otherwise
+  // one Serper outage would hide the panel for this render permanently.
+  if (!hadFailure) {
+    await prisma.generation.update({
+      where: { id: generationId },
+      data: { products },
+    });
+  }
+
+  return { products };
+}
+
+export async function regenerateGeneration(
+  ownerId: string,
+  generationId: string,
+): Promise<GenerateDesignResult> {
+  const original = await prisma.generation.findFirst({
+    where: {
+      id: generationId,
+      room: { design: { ownerId, deletedAt: null } },
+    },
+    select: {
+      status: true,
+      roomId: true,
+      additionalDetails: true,
+      sourceAsset: {
+        select: { id: true, storageKey: true, deletedAt: true },
+      },
+      designStyles: {
+        select: {
+          designStyleId: true,
+          designStyle: { select: { code: true } },
+        },
+      },
+    },
+  });
+
+  if (!original) {
+    throw new NotFoundError("Generation not found");
+  }
+  if (RUNNING_STATUSES.has(original.status)) {
+    throw new ConflictError("Generation is still in progress");
+  }
+  if (original.sourceAsset.deletedAt) {
+    throw new BadRequestError("Original source image is no longer available");
+  }
+
+  await headObject(original.sourceAsset.storageKey).catch(() => {
+    throw new BadRequestError("Original source image is no longer available");
+  });
+
+  const styleCodes = original.designStyles.map(
+    ({ designStyle }) => designStyle.code,
+  );
+  const generation = await prisma.$transaction(async (tx) => {
+    const created = await tx.generation.create({
+      data: {
+        roomId: original.roomId,
+        sourceAssetId: original.sourceAsset.id,
+        provider: imageGeneration.provider,
+        modelId: imageGeneration.modelId,
+        status: "pending",
+        parameters: { styles: styleCodes },
+        additionalDetails: original.additionalDetails,
+      },
+      select: { id: true, status: true },
+    });
+
+    await tx.generationDesignStyle.createMany({
+      data: original.designStyles.map(({ designStyleId }) => ({
+        generationId: created.id,
+        designStyleId,
+      })),
+    });
+
+    return created;
+  });
+
+  return queueGeneration(generation.id);
+}

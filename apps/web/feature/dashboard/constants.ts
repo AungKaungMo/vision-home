@@ -1,14 +1,4 @@
-import {
-  Bookmark,
-  Compass,
-  CreditCard,
-  Home,
-  LayoutGrid,
-  Sparkles,
-  User,
-  Wand2,
-  type LucideIcon,
-} from "lucide-react";
+import { Home, User, Wand2, type LucideIcon } from "lucide-react";
 
 export type NavItem = {
   label: string;
@@ -25,35 +15,14 @@ export type NavSection = {
 export const NAV_SECTIONS: NavSection[] = [
   {
     heading: "Menu",
-    items: [
-      { label: "Home", href: "/home", icon: Home },
-      { label: "For You", href: "/for-you", icon: Sparkles },
-      { label: "Explore", href: "/explore", icon: Compass },
-    ],
+    items: [{ label: "Home", href: "/home", icon: Home }],
   },
   {
     heading: "Tools",
-    items: [
-      { label: "AI Redesign", href: "/ai-redesign", icon: Wand2 },
-      {
-        label: "Whole House",
-        href: "/ai-redesign/new/whole-house",
-        icon: LayoutGrid,
-      },
-      {
-        label: "Place it yourself",
-        href: "/ai-redesign/new/place-it-yourself",
-        icon: Sparkles,
-        badge: "New",
-      },
-    ],
+    items: [{ label: "AI Studio", href: "/ai-studio", icon: Wand2 }],
   },
   {
     heading: "Account",
-    items: [
-      { label: "Saved", href: "/saved", icon: Bookmark },
-      { label: "Profile", href: "/profile", icon: User },
-      { label: "Subscription", href: "/subscription", icon: CreditCard },
-    ],
+    items: [{ label: "Profile", href: "/profile", icon: User }],
   },
 ];

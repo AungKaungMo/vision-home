@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "build": "prisma generate && tsup src/server.ts --format esm --clean",
+    "build": "prisma generate && tsup src/server.ts src/worker.ts --format esm --clean",
     "check-types": "prisma generate && tsc -p tsconfig.json --noEmit",
     "db:deploy": "prisma migrate deploy",
     "db:format": "prisma format",
@@ -16,9 +16,13 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:validate": "prisma validate",
-    "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
+    "dev": "nodemon --watch src --watch .env --ext ts,env --exec tsx src/server.ts",
+    "dev:worker": "nodemon --watch src --watch .env --ext ts,env --exec tsx src/worker.ts",
+    "dev:ngrok": "ngrok http 4000",
+    "dev:studio": "prisma studio",
     "lint": "eslint . --max-warnings 0",
     "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
     "test": "tsx --test tests/**/*.test.ts"
   },
   "devDependencies": {
@@ -26,6 +30,7 @@
     "@repo/typescript-config": "workspace:*",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.15.3",
     "@types/pg": "^8.23.1",
     "eslint": "^9.39.1",
@@ -37,13 +42,18 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1121.0",
     "@clerk/express": "^2.1.61",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@repo/schemas": "workspace:*",
+    "bullmq": "^6.3.4",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "image-size": "^2.0.2",
+    "ioredis": "^6.0.0",
+    "multer": "^2.3.0",
     "pg": "^8.23.0",
     "zod": "^4.4.3"
   }

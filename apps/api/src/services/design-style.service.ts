@@ -1,3 +1,5 @@
+import type { DesignStyle } from "@repo/schemas/design-styles";
+
 import { NotFoundError } from "@/core/errors";
 import { prisma } from "@/database/prisma";
 
@@ -8,7 +10,7 @@ const designStyleSelect = {
   promptHint: true,
 };
 
-export async function listDesignStyles() {
+export async function listDesignStyles(): Promise<{ items: DesignStyle[] }> {
   const designStyles = await prisma.designStyle.findMany({
     where: { isActive: true },
     orderBy: { id: "asc" },
@@ -18,7 +20,7 @@ export async function listDesignStyles() {
   return { items: designStyles };
 }
 
-export async function getDesignStyleById(id: string) {
+export async function getDesignStyleById(id: string): Promise<DesignStyle> {
   const designStyle = await prisma.designStyle.findFirst({
     where: { id, isActive: true },
     select: designStyleSelect,

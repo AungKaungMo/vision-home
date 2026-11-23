@@ -1,159 +1,173 @@
-# Turborepo starter
+# VisionHome
 
-This Turborepo starter is maintained by the Turborepo core team.
+AI interior-design studio. Upload a photo of a room, pick design styles, and get
+an AI-generated redesign — then refine individual elements, regenerate, and shop
+the look (real products detected in the render).
 
-## Using this example
+This is a portfolio project, deliberately scoped to a few deep features rather
+than a broad product. See [`CLAUDE.md`](./CLAUDE.md) for the full architecture
+and current build status.
 
-Run the following command:
+## Features
 
-```sh
-npx create-turbo@latest
+- **Generate** — upload a room photo, pick a room type + 1–3 design styles, get
+  an AI redesign (fal / FLUX Kontext), processed async on a worker.
+- **Edit element** — draw/move/resize regions and give per-edit instructions to
+  refine part of a render into a new generation.
+- **Regenerate** — re-run a generation with the same inputs.
+- **Shop the look** — a vision pass (florence-2 object detection) finds the
+  furniture actually in the render, then Serper.dev resolves each to a real
+  shopping listing (photo, price, retailer, buy link).
+
+## Stack
+
+- **Monorepo** — Turborepo + pnpm workspaces
+- **Web** (`apps/web`) — Next.js 16 App Router, React 19, TanStack Query, Clerk, Tailwind
+- **API** (`apps/api`) — Express 5, Prisma 7 (Postgres), BullMQ worker, TypeScript (ESM)
+- **Shared** — `@repo/schemas` (Zod contracts), `@repo/ui`, shared ESLint/TS config
+- **External** — Clerk (auth), fal (image generation + understanding), Serper.dev (product search), Cloudflare R2 (storage), Redis (queue)
+
+External providers sit behind ports/adapters and can be faked, so the whole app
+runs end-to-end locally **without any provider keys** — `USE_FAKE_ADAPTERS`
+defaults to fakes outside production.
+
+## Monorepo layout
+
+```
+apps/
+  web/        # Next.js app (package name: web)        → localhost:3001
+  api/        # Express API + generation worker (api)  → localhost:4000
+packages/
+  schemas/    # @repo/schemas — Zod schemas + types, the API/web contract
+  ui/         # @repo/ui — shared React components
+  eslint-config, typescript-config
 ```
 
-## What's inside?
+## Prerequisites
 
-This Turborepo includes the following packages/apps:
+- **Node** >= 20 and **pnpm** 9 (`corepack enable`)
+- **Docker** (for Postgres + Redis) — or bring your own Postgres/Redis
+- A **Clerk** application (free) for auth keys — required even in fake-adapter mode
 
-### Apps and Packages
+## Quick start (local dev)
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+Runs the apps on your host, with only Postgres + Redis in Docker.
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+```bash
+# 1. Install deps
+pnpm install
 
-### Utilities
+# 2. Start Postgres + Redis
+docker compose up -d postgres redis
 
-This Turborepo has some additional tools already setup for you:
+# 3. Create env files (see "Environment" below)
+#    apps/api/.env  and  apps/web/.env.local
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+# 4. Set up the database
+pnpm --filter api db:migrate   # create + apply migrations
+pnpm --filter api db:seed      # seed design styles + room types
 
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+# 5. Run web + API + worker together
+pnpm dev
 ```
 
-Without global `turbo`, use your package manager:
+- Web → **http://localhost:3001**
+- API → **http://localhost:4000**
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+`pnpm dev` also starts the **generation worker** — a separate process that pulls
+redesign jobs off the BullMQ queue and runs the image pipeline. Without it,
+generations are enqueued but never processed (they stay `queued` forever). Run
+it on its own with `pnpm --filter api dev:worker`.
+
+With `USE_FAKE_ADAPTERS` unset (the dev default), image generation, product
+search, and storage all use local fakes — no fal / Serper / R2 keys needed. The
+only keys you must provide are **Clerk** (auth can't be faked).
+
+## Environment
+
+The API parses `process.env` through a Zod schema at boot
+(`apps/api/src/core/config.ts` is the source of truth) and throws on anything
+invalid. Read env only through the exported `CONFIG`.
+
+### `apps/api/.env`
+
+| Variable | Required? | Default | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | **yes** | — | `postgresql://roomapp:localdev@localhost:5432/vision-home?schema=public` for the Docker Postgres |
+| `CLERK_SECRET_KEY` | **yes** | — | `sk_test_…` |
+| `CLERK_PUBLISHABLE_KEY` | **yes** | — | `pk_test_…` |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | **yes** | — | from the Clerk webhook endpoint (`whsec_…`) |
+| `REDIS_URL` | no | `redis://localhost:6379` | |
+| `PORT` | no | `4000` | |
+| `NODE_ENV` | no | `development` | |
+| `CORS_ORIGIN` | no | `http://localhost:3001` | comma-separated list allowed |
+| `USE_FAKE_ADAPTERS` | no | `true` in dev/test, `false` in prod | explicit `true`/`false` overrides |
+| `DEV_API_ORIGIN` | no | `http://localhost:4000` | public origin the worker fetches fake assets from |
+| `FAL_KEY` | if fakes off | — | real image generation + understanding ([fal.ai](https://fal.ai)) |
+| `SERPER_API_KEY` | for shop-the-look | — | real product search ([serper.dev](https://serper.dev), 2,500 free credits) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` | if fakes off | — | Cloudflare R2 storage |
+
+### `apps/web/.env.local`
+
+| Variable | Required? | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | **yes** | `http://localhost:4000` (unset = same-origin relative requests) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | **yes** | `pk_test_…` |
+| `CLERK_SECRET_KEY` | **yes** | `sk_test_…` |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | no | `/auth/sign-in` (match the app's auth routes) |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | no | `/auth/sign-up` |
+| `NEXT_PUBLIC_R2_URL` | no | public R2 URL — only needed to show R2-hosted sample room images |
+
+> Clerk auth is required even with fake adapters. Create a free app at
+> [clerk.com](https://clerk.com), copy the publishable/secret keys, and (for user
+> sync) add a webhook to the API's `/api/v1/webhooks/clerk` endpoint and copy its
+> signing secret into `CLERK_WEBHOOK_SIGNING_SECRET`.
+
+## Database
+
+```bash
+pnpm --filter api db:migrate   # prisma migrate dev — create + apply a migration
+pnpm --filter api db:deploy    # prisma migrate deploy — apply in CI/prod
+pnpm --filter api db:seed      # seed design styles + room types
+pnpm --filter api db:reset     # drop, re-migrate, re-seed
+pnpm --filter api db:studio    # Prisma Studio
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Common commands
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
+```bash
+pnpm dev              # all apps + worker via turbo (web:3001, api:4000)
+pnpm dev:api          # API only
+pnpm dev:web          # web only
+pnpm --filter api dev:worker   # generation worker only
+pnpm build            # build everything (respects dependency order)
+pnpm lint             # eslint --max-warnings 0 across the graph
+pnpm check-types      # typecheck across the graph
+pnpm format           # prettier --write
+pnpm --filter api test   # api test suite (tsx --test)
 ```
 
-Without global `turbo`:
+> After editing anything under `packages/schemas/src/`, rebuild it
+> (`pnpm --filter @repo/schemas build`) — both apps consume its compiled `dist/`.
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+## Full Docker stack
+
+The whole stack is containerized (`docker-compose.yml` + `dev.Dockerfile`) —
+Postgres, Redis, the API, the generation worker, and the web app:
+
+```bash
+docker compose up            # build + run everything
+docker compose up -d postgres redis   # just the datastores (for local dev)
 ```
 
-### Develop
+The API/worker containers point `DATABASE_URL`/`REDIS_URL` at the service names
+and still read `apps/api/.env` for everything else (keys, `USE_FAKE_ADAPTERS`).
 
-To develop all apps and packages, run the following command:
+## Architecture
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+The API is layered **router → middleware → handler → service → Prisma**, with a
+`{ status, message, data }` response envelope and hexagonal ports/adapters for
+external providers (each has a `fake` and a real implementation). The web app is
+feature-first (`feature/<domain>/`) with React Query for server state. Full
+details, conventions, and the redesign pipeline's build status live in
+[`CLAUDE.md`](./CLAUDE.md).

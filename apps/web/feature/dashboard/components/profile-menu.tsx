@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar } from "@base-ui/react/avatar";
-import { ChevronDown, CreditCard, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -21,7 +21,6 @@ export function ProfileMenu() {
     initials,
     imageUrl,
     goToProfile,
-    goToSubscription,
     signOut,
   } = useProfileMenu();
 
@@ -61,10 +60,6 @@ export function ProfileMenu() {
         <DropdownMenuItem onClick={goToProfile}>
           <User aria-hidden className="size-4" />
           Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={goToSubscription}>
-          <CreditCard aria-hidden className="size-4" />
-          Subscription
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={signOut}>

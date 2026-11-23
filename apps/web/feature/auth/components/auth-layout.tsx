@@ -22,8 +22,8 @@ export function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>
             reimagined in seconds.
           </h2>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/86 xl:text-md">
-            AI redesigns, whole-house styling, and drag-and-drop product
-            placement — all in your browser.
+            AI redesigns, element-level edits, and shop-the-look products — all
+            in your browser.
           </p>
         </div>
       </aside>

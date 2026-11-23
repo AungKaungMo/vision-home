@@ -1,15 +1,17 @@
+import { fileURLToPath } from "node:url";
+
+import { clerkMiddleware } from "@clerk/express";
 import cors from "cors";
 import express from "express";
 
 import { errorMiddleware } from "@/api/middleware/error.middleware";
+import { devStorageRouter } from "@/api/v1/dev-storage/dev-storage.router";
 import { v1Router } from "@/api/v1/router";
 import { webhooksRouter } from "@/api/v1/webhooks/webhooks.router";
 import { CONFIG } from "@/core/config";
 
 export const app = express();
 
-// Allow the browser web app to call the API cross-origin. Handles preflight
-// (OPTIONS) automatically for every route below.
 app.use(
   cors({
     origin: CONFIG.CORS_ORIGIN,
@@ -18,11 +20,19 @@ app.use(
   }),
 );
 
-// Clerk webhooks require the raw request body for Svix signature
-// verification, so they must be mounted before express.json() consumes
+// Clerk signature verification requires the raw body before express.json().
 app.use("/api/v1/webhooks", webhooksRouter);
 
+// Fake storage lives on local disk, so serve it over HTTP whenever it's active.
+if (CONFIG.USE_FAKE_ADAPTERS) {
+  const assetDirectory = fileURLToPath(new URL("../asset", import.meta.url));
+  app.use("/asset", express.static(assetDirectory));
+  app.use("/api/v1/dev-storage", devStorageRouter);
+}
+
 app.use(express.json());
+
+app.use(clerkMiddleware());
 app.use("/api/v1", v1Router);
 
 app.get("/health", (_request, response) => {

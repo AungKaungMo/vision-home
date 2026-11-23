@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Star } from "lucide-react";
+import { House } from "lucide-react";
 
 import { NAV_SECTIONS, type NavItem } from "@/feature/dashboard/constants";
 import { cn } from "@/lib/utils";
@@ -43,8 +43,6 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-
-      <StudioPlanCard />
     </aside>
   );
 }
@@ -74,19 +72,5 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         </span>
       )}
     </Link>
-  );
-}
-
-function StudioPlanCard() {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-sidebar-border bg-surface px-3 py-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-terracotta-muted text-terracotta">
-        <Star aria-hidden className="size-4" strokeWidth={2.25} />
-      </span>
-      <span className="flex flex-col leading-tight">
-        <span className="text-sm font-semibold text-fg-1">Studio plan</span>
-        <span className="text-xs text-fg-3">Manage plan &amp; billing</span>
-      </span>
-    </div>
   );
 }
